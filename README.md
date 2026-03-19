@@ -3,7 +3,7 @@
 ![Status](https://img.shields.io/badge/status-in%20development-FF2D00?style=for-the-badge)
 ![Version](https://img.shields.io/badge/version-0.1.0-black?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-FF2D00?style=for-the-badge)
-[![React Doctor](https://www.react.doctor/share/badge?p=tazakhabar&s=96&w=6&f=5)](https://www.react.doctor/share?p=tazakhabar&s=96&w=6&f=5)
+![React Doctor](https://img.shields.io/badge/React%20Doctor-96%2F100-black?style=for-the-badge&logo=react)
 ![Next.js](https://img.shields.io/badge/Next.js_14-black?style=for-the-badge&logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-black?style=for-the-badge&logo=typescript)
 ![Python](https://img.shields.io/badge/Python_3.11-black?style=for-the-badge&logo=python)

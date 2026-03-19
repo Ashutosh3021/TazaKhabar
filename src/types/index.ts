@@ -10,12 +10,16 @@ export interface Job {
   locationType: LocationType;
   companySize: string;
   salary: string;
+  fundingStage: string;
+  deadline?: string; // e.g. "25 DEC"
   skills: string[];
   postedDays: number;
   hiringStatus: HiringStatus;
   saved: boolean;
   applied?: boolean;
   experienceTier: "I" | "II" | "III" | "IV";
+  emailAvailable?: boolean;
+  applyAvailable?: boolean;
 }
 
 export interface Trend {

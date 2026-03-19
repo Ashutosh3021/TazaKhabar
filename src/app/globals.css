@@ -32,16 +32,16 @@
   }
 
   .brutalist-border-primary {
-    border: 1.5px solid #ff2f00;
+    border: 1.5px solid #FF2D00;
     border-radius: 0px;
   }
 
   .news-card-border {
-    border-left: 3px solid #ff2f00;
+    border-left: 3px solid #FF2D00;
   }
 
   .active-tab {
-    border-top: 2px solid #ff2f00;
+    border-top: 2px solid #FF2D00;
     background: rgba(255, 45, 0, 0.1);
   }
 }
@@ -74,4 +74,36 @@
 .terminal-cursor {
   display: inline-block;
   animation: tazakhabar-blink 1s steps(2, start) infinite;
+}
+
+@keyframes tazakhabar-skeleton-pulse {
+  0%,
+  100% {
+    background-color: #1e1e1e;
+  }
+  50% {
+    background-color: #2a2a2a;
+  }
+}
+
+.tazakhabar-skeleton-bar {
+  animation: tazakhabar-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes tazakhabar-live-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.tazakhabar-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #FF2D00;
+  animation: tazakhabar-live-dot 2s ease-in-out infinite;
 }

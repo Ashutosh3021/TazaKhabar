@@ -17,6 +17,20 @@ type TazaContextValue = {
   setActiveFilters: (next: ActiveFilters) => void;
 
   resetAll: () => void;
+
+  // scrape/refresh state
+  feedNewCount: number;
+  radarNewCount: number;
+  feedVersion: number;
+  radarVersion: number;
+  isFetchingFeed: boolean;
+  isFetchingRadar: boolean;
+  refreshFeed: () => void;
+  refreshRadar: () => void;
+
+  // resume intelligence gating
+  resumeUploaded: boolean;
+  setResumeUploaded: (v: boolean) => void;
 };
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -33,6 +47,13 @@ const DEFAULT_FILTERS: ActiveFilters = {
   companySize: [],
 };
 
+const DEFAULT_SCRAPE = {
+  feedNewCount: 12,
+  radarNewCount: 12,
+  feedVersion: 0,
+  radarVersion: 0,
+};
+
 const TazaContext = createContext<TazaContextValue | null>(null);
 
 export function TazaProvider({ children }: { children: React.ReactNode }) {
@@ -47,6 +68,43 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
   const filtersStorage = useLocalStorage<ActiveFilters>(
     "tazakhabar:activeFilters",
     DEFAULT_FILTERS,
+  );
+
+  const scrapeStorage = useLocalStorage<{
+    feedNewCount: number;
+    radarNewCount: number;
+    feedVersion: number;
+    radarVersion: number;
+  }>("tazakhabar:scrapeState", DEFAULT_SCRAPE);
+
+  const [isFetchingFeed, setIsFetchingFeed] = React.useState(false);
+  const [isFetchingRadar, setIsFetchingRadar] = React.useState(false);
+
+  const refreshFeed = () => {
+    if (isFetchingFeed) return;
+    setIsFetchingFeed(true);
+    scrapeStorage.setValue({
+      ...scrapeStorage.value,
+      feedNewCount: 0,
+      feedVersion: scrapeStorage.value.feedVersion + 1,
+    });
+    window.setTimeout(() => setIsFetchingFeed(false), 1100);
+  };
+
+  const refreshRadar = () => {
+    if (isFetchingRadar) return;
+    setIsFetchingRadar(true);
+    scrapeStorage.setValue({
+      ...scrapeStorage.value,
+      radarNewCount: 0,
+      radarVersion: scrapeStorage.value.radarVersion + 1,
+    });
+    window.setTimeout(() => setIsFetchingRadar(false), 1100);
+  };
+
+  const resumeUploadedStorage = useLocalStorage<boolean>(
+    "tazakhabar:resumeUploaded",
+    false,
   );
 
   const value: TazaContextValue = {
@@ -67,14 +125,32 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
       userStorage.setValue(DEFAULT_PROFILE);
       savedStorage.setValue([]);
       filtersStorage.setValue(DEFAULT_FILTERS);
+      resumeUploadedStorage.setValue(false);
+      scrapeStorage.setValue(DEFAULT_SCRAPE);
       try {
         window.localStorage.removeItem("tazakhabar:userProfile");
         window.localStorage.removeItem("tazakhabar:savedJobs");
         window.localStorage.removeItem("tazakhabar:activeFilters");
+        window.localStorage.removeItem("tazakhabar:resumeUploaded");
+        window.localStorage.removeItem("tazakhabar:scrapeState");
       } catch {
         // ignore
       }
     },
+
+    // scrape + refresh
+    feedNewCount: scrapeStorage.value.feedNewCount,
+    radarNewCount: scrapeStorage.value.radarNewCount,
+    feedVersion: scrapeStorage.value.feedVersion,
+    radarVersion: scrapeStorage.value.radarVersion,
+    isFetchingFeed,
+    isFetchingRadar,
+    refreshFeed,
+    refreshRadar,
+
+    // resume
+    resumeUploaded: resumeUploadedStorage.value,
+    setResumeUploaded: resumeUploadedStorage.setValue,
   };
 
   return <TazaContext.Provider value={value}>{children}</TazaContext.Provider>;

@@ -23,7 +23,7 @@ const config: Config = {
     },
     extend: {
       colors: {
-        primary: "#ff2f00",
+        primary: "#FF2D00",
         "background-dark": "#0E0E0E",
         "card-dark": "#1a1a1a",
         "border-dark": "#1e1e1e",

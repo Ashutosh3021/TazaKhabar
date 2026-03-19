@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTaza } from "./TazaContext";
 
 const tabs = [
   { href: "/setup/1", icon: "radar", label: "SETUP", matchPrefix: "/setup" },
@@ -13,6 +14,7 @@ const tabs = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const { feedNewCount, radarNewCount } = useTaza();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-dark bg-background-dark md:hidden">
@@ -27,12 +29,28 @@ export default function BottomNav() {
                 isActive ? "active-tab text-primary" : "text-dim-text hover:text-neutral-beige"
               }`}
             >
-              <span
-                className={`material-symbols-outlined text-[22px] ${
-                  isActive ? "text-primary" : "text-dim-text"
-                }`}
-              >
-                {t.icon}
+              <span className="relative inline-flex items-center justify-center">
+                <span
+                  className={`material-symbols-outlined text-[22px] ${
+                    isActive ? "text-primary" : "text-dim-text"
+                  }`}
+                >
+                  {t.icon}
+                </span>
+                {t.icon === "newspaper" && feedNewCount > 0 ? (
+                  <span className="absolute -top-2 -right-2 inline-flex h-[8px] w-[8px] items-center justify-center rounded-full bg-[#FF2D00] text-white">
+                    <span className="font-mono text-[7px] font-bold leading-none">
+                      {feedNewCount}
+                    </span>
+                  </span>
+                ) : null}
+                {t.icon === "radar" && radarNewCount > 0 ? (
+                  <span className="absolute -top-2 -right-2 inline-flex h-[8px] w-[8px] items-center justify-center rounded-full bg-[#FF2D00] text-white">
+                    <span className="font-mono text-[7px] font-bold leading-none">
+                      {radarNewCount}
+                    </span>
+                  </span>
+                ) : null}
               </span>
               <span className="mono-label text-[9px] leading-none">{t.label}</span>
             </Link>

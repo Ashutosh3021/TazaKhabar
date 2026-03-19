@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { useTaza } from "@/components/TazaContext";
 
 export default function SetupStep3Page() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const { setResumeUploaded } = useTaza();
 
   return (
     <div className="min-h-screen flex flex-col px-6 py-10 bg-background-dark">
@@ -58,7 +60,10 @@ export default function SetupStep3Page() {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) setFileName(f.name);
+              if (f) {
+                setFileName(f.name);
+                setResumeUploaded(true);
+              }
             }}
           />
         </div>
@@ -72,7 +77,11 @@ export default function SetupStep3Page() {
           </Link>
           <button
             type="button"
-            onClick={() => router.push("/jobs")}
+            onClick={() => {
+              // Treat completion as having a resume attached (even if user skipped uploading).
+              setResumeUploaded(true);
+              router.push("/jobs");
+            }}
             className="brutalist-border-primary bg-primary/10 px-6 py-3 mono-label text-[11px] text-neutral-beige hover:bg-primary/20 transition-colors"
           >
             COMPLETE SETUP

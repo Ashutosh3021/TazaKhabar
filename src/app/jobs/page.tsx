@@ -25,7 +25,16 @@ const LOCATION_OPTIONS: LocationType[] = ["Remote", "Hybrid", "On-site"];
 const EXPERIENCE_OPTIONS = ["I", "II", "III", "IV"] as const;
 
 export default function JobsPage() {
-  const { savedJobs, toggleSavedJob, activeFilters, setActiveFilters } = useTaza();
+  const {
+    savedJobs,
+    toggleSavedJob,
+    activeFilters,
+    setActiveFilters,
+    radarNewCount,
+    refreshRadar,
+    isFetchingRadar,
+    radarVersion,
+  } = useTaza();
 
   const [experienceFilter, setExperienceFilter] = useState<
     (typeof EXPERIENCE_OPTIONS)[number] | ""
@@ -38,10 +47,15 @@ export default function JobsPage() {
     return Array.from(set);
   }, []);
 
+  const rotatedJobs = useMemo(() => {
+    const shift = radarVersion % jobs.length;
+    return [...jobs.slice(shift), ...jobs.slice(0, shift)];
+  }, [radarVersion]);
+
   const filteredJobs = useMemo(() => {
     const roleFiltered = activeFilters.roles.length
-      ? jobs.filter((j) => activeFilters.roles.includes(j.role))
-      : jobs;
+      ? rotatedJobs.filter((j) => activeFilters.roles.includes(j.role))
+      : rotatedJobs;
 
     const locationFiltered = activeFilters.location
       ? roleFiltered.filter((j) => j.locationType === activeFilters.location)
@@ -72,7 +86,35 @@ export default function JobsPage() {
     experienceFilter,
     savedJobs,
     tab,
+    rotatedJobs,
   ]);
+
+  const countJobsForRole = (role: string) => {
+    const roleFiltered = rotatedJobs.filter((j) => j.role === role);
+
+    const locationFiltered = activeFilters.location
+      ? roleFiltered.filter((j) => j.locationType === activeFilters.location)
+      : roleFiltered;
+
+    const companyFiltered = activeFilters.companySize.length
+      ? locationFiltered.filter((j) =>
+          activeFilters.companySize.includes(j.companySize),
+        )
+      : locationFiltered;
+
+    const experienceFiltered = experienceFilter
+      ? companyFiltered.filter((j) => j.experienceTier === experienceFilter)
+      : companyFiltered;
+
+    const tabFiltered =
+      tab === "SAVED"
+        ? experienceFiltered.filter((j) => savedJobs.includes(j.id))
+        : tab === "APPLIED"
+          ? experienceFiltered.filter((j) => j.applied)
+          : experienceFiltered;
+
+    return tabFiltered.length;
+  };
 
   function toggleRole(role: string) {
     const has = activeFilters.roles.includes(role);
@@ -100,6 +142,21 @@ export default function JobsPage() {
 
   return (
     <AppShell>
+      {radarNewCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => refreshRadar()}
+          className="-mx-6 md:-mx-20 h-[36px] w-[calc(100%+48px)] md:w-[calc(100%+160px)] bg-[#FF2D00] text-[#0E0E0E] flex items-center justify-center relative z-10"
+        >
+          <span className="font-mono text-[10px] font-bold uppercase tracking-[2px]">
+            NEW DATA AVAILABLE — TAP TO REFRESH
+          </span>
+          <span className="absolute right-4 text-[#0E0E0E] font-mono text-[14px]">
+            ↑
+          </span>
+        </button>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8">
         {/* Desktop sidebar */}
         <aside className="hidden md:block md:col-span-3 lg:col-span-3">
@@ -128,6 +185,7 @@ export default function JobsPage() {
               <div className="flex flex-col gap-2">
                 {ROLE_CHIPS.map((r) => {
                   const checked = activeFilters.roles.includes(r);
+                  const matches = checked ? countJobsForRole(r) : 0;
                   return (
                     <label
                       key={r}
@@ -139,8 +197,18 @@ export default function JobsPage() {
                         onChange={() => toggleRole(r)}
                         className="accent-primary"
                       />
-                      <span className="mono-label text-[11px] text-neutral-beige/90">
-                        {r}
+                      <span className="flex items-center gap-[6px]">
+                        <span className="mono-label text-[11px] text-neutral-beige/90">
+                          {r}
+                        </span>
+                        {checked ? (
+                          <span
+                            className="mono-label text-[10px]"
+                            style={{ color: matches === 0 ? "#444" : "#FF2D00" }}
+                          >
+                            {matches}
+                          </span>
+                        ) : null}
                       </span>
                     </label>
                   );
@@ -301,6 +369,7 @@ export default function JobsPage() {
                     <div className="flex flex-col gap-2">
                       {ROLE_CHIPS.map((r) => {
                         const checked = activeFilters.roles.includes(r);
+                        const matches = checked ? countJobsForRole(r) : 0;
                         return (
                           <label
                             key={r}
@@ -312,8 +381,20 @@ export default function JobsPage() {
                               onChange={() => toggleRole(r)}
                               className="accent-primary"
                             />
-                            <span className="mono-label text-[11px] text-neutral-beige/90">
-                              {r}
+                            <span className="flex items-center gap-[6px]">
+                              <span className="mono-label text-[11px] text-neutral-beige/90">
+                                {r}
+                              </span>
+                              {checked ? (
+                                <span
+                                  className="mono-label text-[10px]"
+                                  style={{
+                                    color: matches === 0 ? "#444" : "#FF2D00",
+                                  }}
+                                >
+                                  {matches}
+                                </span>
+                              ) : null}
                             </span>
                           </label>
                         );
@@ -455,6 +536,15 @@ export default function JobsPage() {
 
         {/* Main content */}
         <section className="md:col-span-9 lg:col-span-9">
+          <header className="mb-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#555]">
+              SOURCED FROM HN WHO'S HIRING · LAST PULL 14 MIN AGO
+            </p>
+            <p className="mono-label text-[10px] text-[#555] uppercase tracking-[0.2em] mt-1">
+              LAST UPDATED · 2H AGO
+            </p>
+          </header>
+
           <div className="flex flex-col gap-6">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -484,30 +574,27 @@ export default function JobsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredJobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  saved={savedJobs.includes(job.id)}
-                  onToggleSaved={() => toggleSavedJob(job.id)}
-                />
-              ))}
-            </div>
-
-            {filteredJobs.length === 0 ? (
-              <div className="brutalist-border p-8 bg-card-dark">
-                <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.05em]">
-                  No roles match your filters.
-                </p>
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="mt-4 brutalist-border-primary bg-primary/10 mono-label text-[11px] uppercase tracking-[0.05em] px-4 py-3"
-                >
-                  Reset filters
-                </button>
+            {isFetchingRadar ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[0, 1, 2].map((i) => (
+                  <JobCardSkeleton key={i} />
+                ))}
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    saved={savedJobs.includes(job.id)}
+                    onToggleSaved={() => toggleSavedJob(job.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!isFetchingRadar && filteredJobs.length === 0 ? (
+              <RadarEmptyState onClear={clearFilters} />
             ) : null}
           </div>
 
@@ -590,13 +677,104 @@ function JobCard({
         ))}
       </div>
 
+      <div className="flex gap-4 pt-2">
+        <button
+          type="button"
+          disabled={!job.emailAvailable}
+          className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border ${
+            job.emailAvailable
+              ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
+              : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm mr-2">
+            mail
+          </span>
+          EMAIL
+        </button>
+        <button
+          type="button"
+          disabled={!job.applyAvailable}
+          className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border ${
+            job.applyAvailable
+              ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
+              : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm mr-2">
+            rocket_launch
+          </span>
+          APPLY
+        </button>
+      </div>
+
       <div className="flex items-center justify-between mt-auto pt-2">
         <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.05em]">
-          Posted {job.postedDays} days ago
+          Posted {job.postedDays} days ago · {job.fundingStage} ·{" "}
+          {job.deadline ? (
+            <span className="text-dim-text">CLOSES {job.deadline}</span>
+          ) : (
+            <span className="text-[#444]">DEADLINE UNKNOWN</span>
+          )}
         </p>
         <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.05em]">
           LVL {job.experienceTier}
         </p>
+      </div>
+    </article>
+  );
+}
+
+function RadarEmptyState({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="min-h-[340px] flex flex-col items-center justify-center text-center col-span-full">
+      <div className="font-serif text-[48px] font-black text-primary leading-none">
+        —
+      </div>
+      <div className="font-mono text-[14px] font-bold uppercase tracking-[3px] text-neutral-beige mt-4">
+        NO JOBS FOUND
+      </div>
+      <div className="font-mono text-[12px] text-[#8c8c8c] mt-3">
+        Try a different filter or check back after the next data pull
+      </div>
+      <button
+        type="button"
+        onClick={onClear}
+        className="mt-6 border-1.5 border-primary text-primary bg-transparent font-mono text-[11px] font-bold uppercase tracking-[0.05em] px-5 py-3 cursor-pointer hover:bg-primary/10"
+      >
+        CLEAR FILTERS →
+      </button>
+    </div>
+  );
+}
+
+function JobCardSkeleton() {
+  return (
+    <article className="brutalist-border bg-card-dark p-5 flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-3">
+          <div className="tazakhabar-skeleton-bar w-[180px] h-[16px]" />
+          <div className="tazakhabar-skeleton-bar w-[120px] h-[12px]" />
+        </div>
+        <div className="tazakhabar-skeleton-bar w-[22px] h-[22px]" />
+      </div>
+
+      <div className="flex gap-2">
+        <div className="tazakhabar-skeleton-bar w-[90px] h-[20px]" />
+        <div className="tazakhabar-skeleton-bar w-[120px] h-[20px]" />
+      </div>
+
+      <div className="tazakhabar-skeleton-bar w-[110px] h-[24px]" />
+
+      <div className="flex gap-2">
+        <div className="tazakhabar-skeleton-bar w-[60px] h-[24px]" />
+        <div className="tazakhabar-skeleton-bar w-[60px] h-[24px]" />
+        <div className="tazakhabar-skeleton-bar w-[60px] h-[24px]" />
+      </div>
+
+      <div className="flex gap-4 pt-2">
+        <div className="tazakhabar-skeleton-bar flex-1 h-[44px]" />
+        <div className="tazakhabar-skeleton-bar flex-1 h-[44px]" />
       </div>
     </article>
   );

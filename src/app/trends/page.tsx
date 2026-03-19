@@ -15,6 +15,9 @@ export default function TrendsPage() {
       ? "NEUTRAL_SIGNAL"
       : "TIGHTENING_GRIP";
 
+  const booming = trends.slice(0, 4);
+  const declining = trends.slice(4);
+
   return (
     <AppShell>
       <div className="space-y-10">
@@ -43,43 +46,31 @@ export default function TrendsPage() {
           />
         </section>
 
-        <section className="space-y-6">
-          <h2 className="mono-label text-[11px] tracking-[0.2em] text-primary uppercase">
-            TOP TRENDING SKILLS
-          </h2>
+        <section className="space-y-10">
+          <div className="space-y-6">
+            <h2 className="flex items-center gap-3 mono-label text-[11px] tracking-[0.2em] text-primary uppercase">
+              <span className="tazakhabar-live-dot" />
+              BOOMING ROLES →
+            </h2>
 
-          <div className="space-y-4">
-            {trends.map((t) => (
-              <div
-                key={t.skill}
-                className="flex items-center gap-4 border border-border-dark bg-card-dark p-4"
-              >
-                <div className="w-[180px] shrink-0">
-                  <p className="mono-label text-[11px] text-neutral-beige/90 uppercase">
-                    {t.skill}
-                  </p>
-                </div>
+            <div className="space-y-4">
+              {booming.map((t) => (
+                <TrendBarRow key={t.skill} t={t} />
+              ))}
+            </div>
+          </div>
 
-                <div className="flex-1">
-                  <div className="h-3 bg-neutral-border relative overflow-hidden">
-                    <div
-                      className="h-full bg-primary"
-                      style={{ width: `${t.percentage}%` }}
-                    />
-                  </div>
-                </div>
+          <div className="space-y-6">
+            <h2 className="flex items-center gap-3 mono-label text-[11px] tracking-[0.2em] text-primary uppercase">
+              <span className="tazakhabar-live-dot" />
+              DECLINING ROLES →
+            </h2>
 
-                <div className="w-[90px] text-right">
-                  <p className="mono-label text-[11px] text-primary">
-                    {t.percentage}%
-                  </p>
-                  <p className="mono-label text-[10px] text-dim-text">
-                    {t.weeklyChange >= 0 ? "+" : ""}
-                    {t.weeklyChange.toFixed(0)}w
-                  </p>
-                </div>
-              </div>
-            ))}
+            <div className="space-y-4">
+              {declining.map((t) => (
+                <TrendBarRow key={t.skill} t={t} />
+              ))}
+            </div>
           </div>
         </section>
 
@@ -171,6 +162,36 @@ function StatCard({
       </p>
       <div className={`mt-5 font-serif text-3xl font-black ${accentCls} leading-tight`}>
         {value}
+      </div>
+    </div>
+  );
+}
+
+function TrendBarRow({ t }: { t: (typeof trends)[number] }) {
+  return (
+    <div
+      className="flex items-center gap-4 border border-border-dark bg-card-dark p-4"
+    >
+      <div className="w-[180px] shrink-0">
+        <p className="mono-label text-[11px] text-neutral-beige/90 uppercase">
+          {t.skill}
+        </p>
+      </div>
+
+      <div className="flex-1">
+        <div className="h-3 bg-neutral-border relative overflow-hidden">
+          <div className="h-full bg-primary" style={{ width: `${t.percentage}%` }} />
+        </div>
+      </div>
+
+      <div className="w-[90px] text-right">
+        <p className="mono-label text-[11px] text-primary">
+          {t.percentage}%
+        </p>
+        <p className="mono-label text-[10px] text-dim-text">
+          {t.weeklyChange >= 0 ? "+" : ""}
+          {t.weeklyChange.toFixed(0)}w
+        </p>
       </div>
     </div>
   );

@@ -1,8 +1,67 @@
 import Image from "next/image";
+import Link from "next/link";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+    <>
+    <div className="relative min-h-screen overflow-hidden bg-background-dark">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(rgba(255,47,0,0.03) 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+        }}
+      />
+
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center">
+        <h1 className="font-serif text-5xl md:text-7xl font-black leading-[0.95]">
+          Raw intelligence for the tech{" "}
+          <span className="text-primary italic font-black">job market.</span>
+        </h1>
+
+        <p className="mono-label mt-6 text-[12px] tracking-[0.2em] text-dim-text">
+          HACKER NEWS DATA · AI PATTERN RECOGNITION · HONEST JOB HUNT
+        </p>
+
+        <div className="mt-10 flex w-full max-w-[360px] flex-col gap-4">
+          <Link
+            href="/auth"
+            className="brutalist-border-primary bg-background-dark text-neutral-beige font-mono text-sm uppercase tracking-[0.05em] py-4 text-center hover:bg-primary/10 transition-colors"
+          >
+            Continue with Google
+          </Link>
+          <Link
+            href="/auth"
+            className="brutalist-border-primary bg-background-dark text-neutral-beige font-mono text-sm uppercase tracking-[0.05em] py-4 text-center hover:bg-primary/10 transition-colors"
+          >
+            Continue with GitHub
+          </Link>
+          <Link
+            href="/auth"
+            className="bg-primary text-black font-mono text-sm uppercase tracking-[0.05em] py-4 text-center hover:opacity-90 transition-opacity"
+          >
+            Continue with Email
+          </Link>
+        </div>
+      </div>
+
+      <footer className="absolute bottom-8 left-0 right-0 px-6">
+        <div className="mx-auto max-w-2xl text-center">
+          <span className="mono-label text-[10px] text-dim-text">
+            © {new Date().getFullYear()} TazaKhabar ·{" "}
+          </span>
+          <Link
+            href="/"
+            className="mono-label text-[10px] text-dim-text hover:text-neutral-beige underline decoration-primary/40 underline-offset-4"
+          >
+            TERMS
+          </Link>
+        </div>
+      </footer>
+    </div>
+    <main className="hidden flex min-h-screen flex-col items-center justify-between p-24">
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
         <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
           Get started by editing&nbsp;
@@ -109,5 +168,6 @@ export default function Home() {
         </a>
       </div>
     </main>
+    </>
   );
 }

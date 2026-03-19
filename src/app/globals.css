@@ -2,32 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+@layer base {
+  body {
+    @apply bg-background-dark text-neutral-beige;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  .mono-label {
+    font-family: var(--font-ibm-plex-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-variation-settings: "wght" 500;
+  }
+
+  .brutalist-border {
+    border: 1px solid #333;
+    border-radius: 0px;
+  }
+
+  .brutalist-border-primary {
+    border: 1.5px solid #ff2f00;
+    border-radius: 0px;
+  }
+
+  .news-card-border {
+    border-left: 3px solid #ff2f00;
+  }
+
+  .active-tab {
+    border-top: 2px solid #ff2f00;
+    background: rgba(255, 45, 0, 0.1);
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+  line-height: 1;
+  font-size: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+@keyframes tazakhabar-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.terminal-cursor {
+  display: inline-block;
+  animation: tazakhabar-blink 1s steps(2, start) infinite;
 }

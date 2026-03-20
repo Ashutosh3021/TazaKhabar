@@ -113,3 +113,16 @@ class Embedding(Base):
     item_type: Mapped[str] = mapped_column(String(20))  # "job", "news", "resume"
     embedding: Mapped[bytes] = mapped_column(LargeBinary)  # BLOB, stored as bytes
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    """Notification queue for job match alerts."""
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    job_id: Mapped[str] = mapped_column(String(36))
+    match_score: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued, sent, failed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

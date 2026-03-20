@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.api import jobs_router, news_router, trends_router
+from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +52,8 @@ app = FastAPI(
 app.include_router(jobs_router)
 app.include_router(news_router)
 app.include_router(trends_router)
+app.include_router(badge_router)
+app.include_router(refresh_router)
 
 # Add CORS middleware
 app.add_middleware(

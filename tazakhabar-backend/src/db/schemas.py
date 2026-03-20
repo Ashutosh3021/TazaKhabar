@@ -69,3 +69,16 @@ class JobFilterParams(BaseModel):
     startup_only: bool = False
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=20, le=100)
+
+
+class BadgeResponse(BaseModel):
+    """Badge counter response for new items since last scrape."""
+    radar_new_count: int = Field(default=0, description="New job postings since last refresh")
+    feed_new_count: int = Field(default=0, description="New news items since last refresh")
+
+
+class RefreshResponse(BaseModel):
+    """Report swap/refresh response."""
+    status: str = Field(default="swapped", description="Status of the refresh operation")
+    radar_new_count: int = Field(default=0, description="New job count after swap")
+    feed_new_count: int = Field(default=0, description="New news count after swap")

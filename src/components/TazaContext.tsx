@@ -3,7 +3,8 @@
 import React, { createContext, useContext } from "react";
 import type { ActiveFilters, UserProfile } from "@/types";
 import { useLocalStorage } from "@/lib/useLocalStorage";
-import { jobs as mockJobs } from "@/lib/mockData";
+import { jobs as mockJobs } from "@/lib/mockData"; // DEPRECATED — used only for default saved jobs fallback
+import { fetchJobs, fetchNews } from "@/lib/api";
 
 type TazaContextValue = {
   userProfile: UserProfile;
@@ -88,7 +89,8 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
       feedNewCount: 0,
       feedVersion: scrapeStorage.value.feedVersion + 1,
     });
-    window.setTimeout(() => setIsFetchingFeed(false), 1100);
+    // Loading state clears after fetch completes (pages call refreshFeed then fetchNews)
+    window.setTimeout(() => setIsFetchingFeed(false), 2000);
   };
 
   const refreshRadar = () => {
@@ -99,7 +101,8 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
       radarNewCount: 0,
       radarVersion: scrapeStorage.value.radarVersion + 1,
     });
-    window.setTimeout(() => setIsFetchingRadar(false), 1100);
+    // Loading state clears after fetch completes (pages call refreshRadar then fetchJobs)
+    window.setTimeout(() => setIsFetchingRadar(false), 2000);
   };
 
   const resumeUploadedStorage = useLocalStorage<boolean>(

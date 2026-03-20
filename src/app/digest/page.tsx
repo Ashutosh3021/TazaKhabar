@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { digestItems } from "@/lib/mockData";
+import { digestItems as mockDigestItems } from "@/lib/mockData"; // DEPRECATED fallback
 import { useTaza } from "@/components/TazaContext";
+import { fetchNews } from "@/lib/api";
+import type { DigestItem } from "@/types";
 
 type Tab = "ALL" | "HIRING" | "LAYOFFS" | "FUNDING" | "SKILLS";
 
@@ -18,24 +20,51 @@ function formatMonoDate(d: Date) {
 export default function DigestPage() {
   const [tab, setTab] = useState<Tab>("ALL");
   const { feedNewCount, refreshFeed, isFetchingFeed, feedVersion } = useTaza();
+  const [digestItems, setDigestItems] = useState<DigestItem[]>([]);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  // Fetch news from live API when version changes or tab changes
+  useEffect(() => {
+    let cancelled = false;
+    async function loadNews() {
+      try {
+        const result = await fetchNews({
+          type: tab === "ALL" ? undefined : tab.toLowerCase(),
+          skip: 0,
+          limit: 20,
+        });
+        if (!cancelled) {
+          setDigestItems(result.data);
+          setApiError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setApiError(err instanceof Error ? err.message : "Failed to load news");
+          setDigestItems([]);
+        }
+      }
+    }
+    loadNews();
+    return () => { cancelled = true; };
+  }, [feedVersion, tab]);
+
   const featured = useMemo(
     () => {
-      const shift = feedVersion % digestItems.length;
-      const rotated = [
-        ...digestItems.slice(shift),
-        ...digestItems.slice(0, shift),
-      ];
+      const shift = feedVersion % (digestItems.length || mockDigestItems.length);
+      const source = digestItems.length > 0 ? digestItems : mockDigestItems;
+      const rotated = [...source.slice(shift), ...source.slice(0, shift)];
       return rotated.find((d) => d.featured) ?? rotated[0];
     },
-    [feedVersion],
+    [feedVersion, digestItems],
   );
 
   const [bookmarked, setBookmarked] = useState<string[]>([]);
 
   const rotatedDigest = useMemo(() => {
-    const shift = feedVersion % digestItems.length;
-    return [...digestItems.slice(shift), ...digestItems.slice(0, shift)];
-  }, [feedVersion]);
+    const shift = feedVersion % (digestItems.length || mockDigestItems.length);
+    const source = digestItems.length > 0 ? digestItems : mockDigestItems;
+    return [...source.slice(shift), ...source.slice(0, shift)];
+  }, [feedVersion, digestItems]);
 
   const list = useMemo(() => {
     const nonFeatured = rotatedDigest.filter((d) => d.id !== featured.id);
@@ -158,7 +187,7 @@ function DigestRow({
   bookmarked,
   onToggleBookmark,
 }: {
-  item: (typeof digestItems)[number];
+  item: DigestItem;
   bookmarked: boolean;
   onToggleBookmark: () => void;
 }) {

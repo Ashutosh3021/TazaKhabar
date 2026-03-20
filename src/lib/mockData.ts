@@ -1,3 +1,7 @@
+/**
+ * @deprecated Mock data — replaced by live API calls via src/lib/api.ts.
+ * Kept only for fallback/error states in early boot.
+ */
 import type { DigestItem, Job, HiringStatus, LocationType, Signal, Trend } from "@/types";
 
 export const jobs: Job[] = [

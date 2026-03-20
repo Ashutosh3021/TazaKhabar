@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { useTaza } from "@/components/TazaContext";
-import { jobs } from "@/lib/mockData";
+import { fetchJobs } from "@/lib/api";
 import type { LocationType, Job } from "@/types";
 
 const ROLE_CHIPS = [
@@ -36,21 +36,49 @@ export default function JobsPage() {
     radarVersion,
   } = useTaza();
 
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [experienceFilter, setExperienceFilter] = useState<
     (typeof EXPERIENCE_OPTIONS)[number] | ""
   >("");
   const [tab, setTab] = useState<"ALL" | "SAVED" | "APPLIED">("ALL");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  // Fetch jobs from live API when version changes or filters change
+  useEffect(() => {
+    let cancelled = false;
+    async function loadJobs() {
+      try {
+        const result = await fetchJobs({
+          roles: activeFilters.roles,
+          remote: activeFilters.location === "Remote",
+          skip: 0,
+          limit: 50,
+        });
+        if (!cancelled) {
+          setJobs(result.data);
+          setApiError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setApiError(err instanceof Error ? err.message : "Failed to load jobs");
+          setJobs([]);
+        }
+      }
+    }
+    loadJobs();
+    return () => { cancelled = true; };
+  }, [radarVersion, activeFilters.roles, activeFilters.location]);
+
   const companySizes = useMemo(() => {
     const set = new Set(jobs.map((j) => j.companySize));
     return Array.from(set);
-  }, []);
+  }, [jobs]);
 
   const rotatedJobs = useMemo(() => {
     const shift = radarVersion % jobs.length;
     return [...jobs.slice(shift), ...jobs.slice(0, shift)];
-  }, [radarVersion]);
+  }, [radarVersion, jobs]);
 
   const filteredJobs = useMemo(() => {
     const roleFiltered = activeFilters.roles.length
@@ -87,6 +115,7 @@ export default function JobsPage() {
     savedJobs,
     tab,
     rotatedJobs,
+    jobs,
   ]);
 
   const countJobsForRole = (role: string) => {
@@ -574,7 +603,7 @@ export default function JobsPage() {
               </div>
             </div>
 
-            {isFetchingRadar ? (
+            {isFetchingRadar || jobs.length === 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[0, 1, 2].map((i) => (
                   <JobCardSkeleton key={i} />
@@ -593,7 +622,7 @@ export default function JobsPage() {
               </div>
             )}
 
-            {!isFetchingRadar && filteredJobs.length === 0 ? (
+            {!isFetchingRadar && jobs.length > 0 && filteredJobs.length === 0 ? (
               <RadarEmptyState onClear={clearFilters} />
             ) : null}
           </div>

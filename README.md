@@ -1,7 +1,7 @@
 # TazaKhabar
 
-![Status](https://img.shields.io/badge/status-in%20development-FF2D00?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-0.1.0-black?style=for-the-badge)
+![Status](https://img.shields.io/badge/status-Phase%201%20Complete-FF2D00?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.0-black?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-FF2D00?style=for-the-badge)
 ![React Doctor](https://img.shields.io/badge/React%20Doctor-96%2F100-black?style=for-the-badge&logo=react)
 ![Next.js](https://img.shields.io/badge/Next.js_14-black?style=for-the-badge&logo=nextdotjs)
@@ -427,52 +427,108 @@ flowchart LR
 
 ```
 tazakhabar/
-├── frontend/                    # Next.js 14 App
+├── src/                         # Next.js 14 Frontend (existing)
 │   ├── app/
 │   │   ├── page.tsx             # Splash + Login
-│   │   ├── onboarding/
-│   │   └── dashboard/
-│   │       ├── feed/
-│   │       ├── radar/
-│   │       ├── trends/
-│   │       └── profile/
+│   │   ├── jobs/                # Job Radar screen
+│   │   ├── digest/              # News Feed screen
+│   │   ├── trends/              # Trends screen
+│   │   └── profile/             # Profile screen
 │   ├── components/
 │   └── lib/
+│       ├── api.ts               # API client (Phase 1: live)
+│       └── mockData.ts          # Deprecated (Phase 1: replaced)
 │
-└── backend/                     # FastAPI Python App
-    ├── main.py
-    ├── database.py
-    ├── models.py
-    ├── routers/
-    ├── scraper/
-    ├── llm/
-    ├── ml/
-    ├── rag/
-    └── utils/
+└── tazakhabar-backend/         # FastAPI Backend (Phase 1: built)
+    ├── src/
+    │   ├── main.py              # FastAPI app + lifespan
+    │   ├── config.py            # Pydantic settings
+    │   ├── db/
+    │   │   ├── database.py      # Async SQLite session
+    │   │   ├── models.py        # SQLAlchemy 2.0 models (8 tables)
+    │   │   └── schemas.py       # Pydantic request/response models
+    │   ├── api/
+    │   │   ├── jobs.py          # GET /api/jobs
+    │   │   ├── news.py          # GET /api/news
+    │   │   ├── trends.py        # GET /api/trends
+    │   │   ├── badge.py         # GET /api/badge
+    │   │   └── refresh.py       # POST /api/refresh
+    │   ├── scrapers/
+    │   │   ├── client.py        # HN Firebase + Algolia client
+    │   │   ├── base_scraper.py  # Shared deduplication + bulk insert
+    │   │   ├── who_is_hiring.py # Who Is Hiring (Algolia, 2hr)
+    │   │   ├── ask_hn.py        # Ask HN (Firebase, 4hr)
+    │   │   ├── show_hn.py       # Show HN (Firebase, 6hr)
+    │   │   └── top_stories.py   # Top Stories (Firebase, 2hr)
+    │   ├── services/
+    │   │   ├── report_service.py # Report 1/2 cycle + badge counts
+    │   │   └── trend_service.py  # Keyword frequency + week-over-week
+    │   ├── scheduler.py          # APScheduler (5 jobs registered)
+    │   ├── notifications.py      # NotificationService (dormant Supabase)
+    │   └── middleware/
+    │       └── logging.py        # RequestLoggingMiddleware
+    ├── tazakhabar.db             # SQLite database
+    ├── Dockerfile                # Railway deployment
+    ├── railway.json              # Railway config
+    ├── .env.example              # Environment template
+    └── requirements.txt         # Python dependencies
 ```
 
 ---
 
 ## Getting Started
 
+### 1. Start the Backend
 ```bash
-# Clone the repo
-git clone https://github.com/yourusername/tazakhabar.git
-
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+cd tazakhabar-backend
 pip install -r requirements.txt
-cp .env.example .env            # Add your API keys
-uvicorn main:app --reload
+cp .env.example .env             # Add your GEMINI_API_KEY (optional for Phase 1)
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
 
-# Frontend setup
-cd ../frontend
+You should see:
+```
+>>> [SETUP] Registering API routers...
+    + /api/jobs registered
+    + /api/news registered
+    + /api/trends registered
+    + /api/badge registered
+    + /api/refresh registered
+>>> [SCHEDULER] Started with 5 jobs registered
+```
+
+### 2. Test All Endpoints
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Badge counter
+curl http://localhost:8000/api/badge
+
+# Job feed
+curl http://localhost:8000/api/jobs
+
+# News feed
+curl http://localhost:8000/api/news
+
+# Trends
+curl http://localhost:8000/api/trends
+
+# Refresh (swap reports)
+curl -X POST http://localhost:8000/api/refresh
+```
+
+### 3. Start the Frontend
+```bash
 npm install
-cp .env.example .env.local      # Add your env vars
 npm run dev
 ```
+
+Visit `http://localhost:3000`
+
+- **/jobs** — Job Radar (live HN jobs)
+- **/digest** — News Feed (Ask HN, Show HN, Top Stories)
+- **/trends** — Trends (keyword frequency bars)
 
 ---
 
@@ -480,41 +536,46 @@ npm run dev
 
 ```env
 # Backend .env
-GEMINI_API_KEY=your_key_here
-DATABASE_URL=sqlite:///./tazakhabar.db
-SUPABASE_URL=add_later
-SUPABASE_KEY=add_later
-STRIPE_SECRET_KEY=add_later
-STRIPE_WEBHOOK_SECRET=add_later
+GEMINI_API_KEY=your_key_here                    # Optional for Phase 1
+DATABASE_URL=sqlite+aiosqlite:///./tazakhabar.db
+ALLOWED_ORIGINS=http://localhost:3000,https://tazakhabar.vercel.app,https://*.vercel.app
+LOG_LEVEL=INFO
+# SUPABASE_URL=add_later                       # Phase 2
+# SUPABASE_KEY=add_later                       # Phase 2
+# STRIPE_SECRET_KEY=add_later                  # Phase 3
+# STRIPE_WEBHOOK_SECRET=add_later              # Phase 3
 
 # Frontend .env.local
 NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_SUPABASE_URL=add_later
-NEXT_PUBLIC_SUPABASE_ANON_KEY=add_later
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=add_later
+# NEXT_PUBLIC_SUPABASE_URL=add_later           # Phase 2
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=add_later       # Phase 2
+# NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=add_later  # Phase 3
 ```
 
 ---
 
 ## Build Progress
 
-| Stage | Status |
-|---|---|
-| FastAPI setup and folder structure | ⬜ Not started |
-| SQLite schema | ⬜ Not started |
-| HN Scrapers — all 4 sources | ⬜ Not started |
-| Report 1 and Report 2 architecture | ⬜ Not started |
-| Contact extraction and ghost detection | ⬜ Not started |
-| Gemini integration | ⬜ Not started |
-| Summarization and trend narration | ⬜ Not started |
-| PDF resume parsing | ⬜ Not started |
-| ATS scoring and keyword suggestions | ⬜ Not started |
-| Personalization and RAG pipeline | ⬜ Not started |
-| ML trend prediction model | ⬜ Not started |
-| Frontend connected to real data | ⬜ Not started |
-| Deployment — Railway and Vercel | ⬜ Not started |
-| Supabase integration | ⬜ Not started |
-| Stripe monetization | ⬜ Not started |
+| Stage | Status | Notes |
+|---|---|---|
+| FastAPI setup and folder structure | DONE | 31 backend files created |
+| SQLite schema (8 tables) | DONE | jobs, news, trends, users, rate_limits, reports, embeddings, notifications |
+| HN Scrapers — all 4 sources | DONE | Who Is Hiring, Ask HN, Show HN, Top Stories |
+| Report 1 and Report 2 architecture | DONE | `/api/refresh` swaps reports |
+| Keyword frequency + week-over-week | DONE | 99 tech keywords tracked |
+| Notification system | DONE | Full code, Supabase dormant |
+| Frontend connected to real data | DONE | All 3 screens use live API |
+| Badge counter + 5-min polling | DONE | `/api/badge` + TopNav polling |
+| Railway deployment ready | DONE | Dockerfile + railway.json |
+| CORS, logging, health check | DONE | All endpoints verified |
+| Gemini integration | TODO | Phase 2 |
+| Summarization and trend narration | TODO | Phase 2 (observation placeholder) |
+| PDF resume parsing | TODO | Phase 2 (scaffolded) |
+| ATS scoring and keyword suggestions | TODO | Phase 2 |
+| Personalization and RAG pipeline | TODO | Phase 2 |
+| ML trend prediction model | TODO | Phase 3 |
+| Supabase integration | TODO | Phase 2 (SQLite-first) |
+| Stripe monetization | TODO | Phase 3 |
 
 ---
 

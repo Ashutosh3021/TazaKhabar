@@ -79,17 +79,23 @@ async def get_news(
     - **limit**: Maximum records to return (max 100)
     """
     try:
+        print(f"\n>>> [API:GET /api/news] Request received")
+        print(f"    Filters -> type: '{type}'")
+        print(f"    Pagination -> skip: {skip}, limit: {limit}")
+        
         # Build base filter — only active report version
         base_filter = News.report_version == "1"
 
         # Type filter
         if type and type != "all":
             base_filter = base_filter & (News.type == type)
+            print(f"    Filter: type = '{type}'")
 
         # Count query
         count_query = select(func.count(News.id)).where(base_filter)
         count_result = await db.execute(count_query)
         total = count_result.scalar() or 0
+        print(f"    DB total count: {total} news items")
 
         # Data query: sort by score desc, then scraped_at desc
         query = (
@@ -102,6 +108,7 @@ async def get_news(
 
         result = await db.execute(query)
         rows = result.scalars().all()
+        print(f"    DB returned: {len(rows)} news items")
 
         # Determine featured: top 3 by score get featured=True
         # We need to know overall ranking, not just within the page
@@ -113,9 +120,12 @@ async def get_news(
         )
         featured_result = await db.execute(featured_query)
         featured_ids = {r.id for r in featured_result.scalars().all()}
+        print(f"    Featured: {len(featured_ids)} items")
 
         news_data = [_row_to_response(r, featured_ids) for r in rows]
         has_more = (skip + limit) < total
+        
+        print(f">>> [API:GET /api/news] Response: {len(news_data)} items (total: {total}, has_more: {has_more})")
 
         return PaginatedResponse(
             data=news_data,
@@ -128,6 +138,9 @@ async def get_news(
         )
 
     except Exception as e:
+        print(f">>> [API:GET /api/news] ERROR: {e}")
+        import traceback
+        print(f">>> [API:GET /api/news] TRACE: {traceback.format_exc()}")
         logger.error(f"Error fetching news: {e}")
         raise HTTPException(
             status_code=500,

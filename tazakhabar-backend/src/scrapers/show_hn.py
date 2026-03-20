@@ -42,6 +42,7 @@ class ShowHNScraper(BaseScraper):
             session.add(report)
             await session.flush()
             report_id = report.id
+            await session.commit()  # Commit so other sessions can see this report
         
         try:
             # Fetch Show HN story IDs
@@ -82,8 +83,9 @@ class ShowHNScraper(BaseScraper):
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
                 result = await session.execute(stmt)
-                report = result.scalar_one()
-                report.status = "failed"
-                await session.commit()
+                report = result.scalar_one_or_none()
+                if report:
+                    report.status = "failed"
+                    await session.commit()
             
             return {"collected": 0, "new": 0}

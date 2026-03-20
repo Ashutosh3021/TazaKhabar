@@ -1,4 +1,5 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -12,7 +13,11 @@ from src.middleware.logging import RequestLoggingMiddleware
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("logs/tazakhabar.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -20,25 +25,41 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events."""
-    # Startup
-    logger.info("TazaKhabar backend starting")
+    print("\n" + "=" * 60)
+    print(">>> [STARTUP] TazaKhabar backend starting...")
+    print(f">>> [CONFIG] CORS origins: {settings.origins_list}")
+    print(f">>> [CONFIG] LOG_LEVEL: {settings.LOG_LEVEL}")
+    print(">>> [CONFIG] Database URL: {0}".format(
+        settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else settings.DATABASE_URL
+    ))
     
     # Import and create database tables
+    print(">>> [STARTUP] Creating database tables...")
     from src.db.database import create_all_tables
-    await create_all_tables()
-    logger.info("Database tables created/verified")
+    try:
+        await create_all_tables()
+        print(">>> [OK] Database tables created/verified")
+    except Exception as e:
+        print(f">>> [ERROR] Database initialization failed: {e}")
+        raise
     
     # Import and start scheduler
+    print(">>> [STARTUP] Starting scraper scheduler...")
     from src.scheduler import start_scheduler, stop_scheduler
     start_scheduler()
-    logger.info("Scraper scheduler started")
+    print(">>> [OK] Scraper scheduler started successfully")
+    print("=" * 60 + "\n")
     
     yield
     
     # Shutdown
-    logger.info("TazaKhabar backend shutting down")
+    print("\n" + "=" * 60)
+    print(">>> [SHUTDOWN] TazaKhabar backend shutting down...")
+    print(">>> [SHUTDOWN] Stopping scraper scheduler...")
     stop_scheduler()
-    logger.info("Scraper scheduler stopped")
+    print(">>> [OK] Scraper scheduler stopped gracefully")
+    print(">>> [OK] Shutdown complete")
+    print("=" * 60 + "\n")
 
 
 # Create FastAPI application
@@ -50,13 +71,20 @@ app = FastAPI(
 )
 
 # Include API routers
+print(">>> [SETUP] Registering API routers...")
 app.include_router(jobs_router)
+print("    + /api/jobs registered")
 app.include_router(news_router)
+print("    + /api/news registered")
 app.include_router(trends_router)
+print("    + /api/trends registered")
 app.include_router(badge_router)
+print("    + /api/badge registered")
 app.include_router(refresh_router)
+print("    + /api/refresh registered")
 
 # Add CORS middleware
+print(">>> [SETUP] Configuring CORS middleware...")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins_list,
@@ -67,6 +95,7 @@ app.add_middleware(
 
 # Add request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
+print(">>> [OK] RequestLoggingMiddleware registered")
 
 
 @app.get("/health")

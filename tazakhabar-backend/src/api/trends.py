@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.database import async_session
+from src.api.deps import get_db
 from src.db.schemas import PaginatedResponse, PaginationMeta
 from src.services.trend_service import compute_keyword_frequencies, get_trends, TrendService, TECH_KEYWORDS
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/trends", tags=["trends"])
 @router.get("")
 async def get_trending_keywords(
     limit: int = 20,
-    session: AsyncSession = Depends(async_session),
+    session: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Get trending keywords with week-over-week analysis.
@@ -67,7 +67,7 @@ async def get_trend_observation() -> dict:
 
 @router.post("/compute")
 async def trigger_trend_computation(
-    session: AsyncSession = Depends(async_session),
+    session: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Manually trigger keyword frequency computation.

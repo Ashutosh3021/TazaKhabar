@@ -98,18 +98,25 @@ async def get_jobs(
     - **limit**: Maximum records to return (max 100)
     """
     try:
+        print(f"\n>>> [API:GET /api/jobs] Request received")
+        print(f"    Filters -> roles: {roles}, remote: {remote}, startup_only: {startup_only}")
+        print(f"    Pagination -> skip: {skip}, limit: {limit}")
+        
         # Build base filter — only active report version
         base_filter = Job.report_version == "1"
+        print(f"    Filter: report_version = '1'")
 
         # Remote filter (AND) — apply at DB level using LIKE
         if remote:
             remote_conditions = [Job.location.ilike(f"%{kw}%") for kw in REMOTE_KEYWORDS]
             base_filter = base_filter & or_(*remote_conditions)
+            print(f"    Filter: remote jobs (location matches: {REMOTE_KEYWORDS})")
 
         # Build count query
         count_query = select(func.count(Job.id)).where(base_filter)
         count_result = await db.execute(count_query)
         total = count_result.scalar() or 0
+        print(f"    DB total count: {total} jobs")
 
         # Build data query with ordering and pagination
         query = (
@@ -122,23 +129,27 @@ async def get_jobs(
 
         result = await db.execute(query)
         rows = result.scalars().all()
+        print(f"    DB returned: {len(rows)} jobs")
 
         # Apply role filter in Python (OR within roles)
         filtered = rows
         if roles:
             filtered = [r for r in filtered if any(_job_matches_role(r.tags or [], role) for role in roles)]
+            print(f"    After role filter ({roles}): {len(filtered)} jobs")
 
         # Apply startup filter in Python (AND) — requires funding_stage field in Job model
         # Note: startup_only filter is non-functional until Job model has funding_stage column
         if startup_only:
             # Deferred: add funding_stage to Job model in future phase
             # Placeholder: pass through all results
-            pass
+            print(f"    WARNING: startup_only filter requires 'funding_stage' column (not yet added)")
 
         # Adjust total to filtered count for accurate pagination
         total = len(filtered)
         jobs_data = [_row_to_response(r) for r in filtered]
         has_more = (skip + limit) < total
+        
+        print(f">>> [API:GET /api/jobs] Response: {len(jobs_data)} jobs (total: {total}, has_more: {has_more})")
 
         return PaginatedResponse(
             data=jobs_data,
@@ -151,6 +162,9 @@ async def get_jobs(
         )
 
     except Exception as e:
+        print(f">>> [API:GET /api/jobs] ERROR: {e}")
+        import traceback
+        print(f">>> [API:GET /api/jobs] TRACE: {traceback.format_exc()}")
         logger.error(f"Error fetching jobs: {e}")
         raise HTTPException(
             status_code=500,

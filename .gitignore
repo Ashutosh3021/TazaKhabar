@@ -38,3 +38,8 @@ next-env.d.ts
 # GSD
 .planning
 plan.md
+.qodo
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

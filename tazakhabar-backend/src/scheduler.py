@@ -58,6 +58,8 @@ async def _show_hn_job():
 
 def start_scheduler() -> None:
     """Start the APScheduler with all configured jobs."""
+    print("\n>>> [SCHEDULER] Registering scraper jobs...")
+    
     # Who Is Hiring: every 2 hours
     scheduler.add_job(
         _who_is_hiring_job,
@@ -66,6 +68,7 @@ def start_scheduler() -> None:
         name="Who Is Hiring Scraper",
         replace_existing=True,
     )
+    print("    + [JOB-1] Who Is Hiring -> runs every 2 hours (Algolia)")
     
     # Trend computation: every 24 hours (weekly keyword frequency analysis)
     from .services.trend_service import compute_keyword_frequencies as _compute_trends
@@ -76,6 +79,7 @@ def start_scheduler() -> None:
         name="Keyword Frequency Computation",
         replace_existing=True,
     )
+    print("    + [JOB-2] Trends Computation -> runs daily at midnight UTC")
     
     # Top Stories: every 2 hours
     scheduler.add_job(
@@ -85,6 +89,7 @@ def start_scheduler() -> None:
         name="Top Stories Scraper",
         replace_existing=True,
     )
+    print("    + [JOB-3] Top Stories -> runs every 2 hours (Firebase)")
     
     # Ask HN: every 4 hours
     scheduler.add_job(
@@ -94,6 +99,7 @@ def start_scheduler() -> None:
         name="Ask HN Scraper",
         replace_existing=True,
     )
+    print("    + [JOB-4] Ask HN -> runs every 4 hours (Firebase)")
     
     # Show HN: every 6 hours
     scheduler.add_job(
@@ -103,9 +109,15 @@ def start_scheduler() -> None:
         name="Show HN Scraper",
         replace_existing=True,
     )
+    print("    + [JOB-5] Show HN -> runs every 6 hours (Firebase)")
     
     scheduler.start()
-    logger.info("APScheduler started with %d jobs", len(scheduler.get_jobs()))
+    job_count = len(scheduler.get_jobs())
+    print(f">>> [SCHEDULER] Started with {job_count} jobs registered")
+    print(f">>> [SCHEDULER] Next run times:")
+    for job in scheduler.get_jobs():
+        next_run = job.next_run_time
+        print(f"    - {job.id}: {next_run}")
 
 
 def stop_scheduler() -> None:

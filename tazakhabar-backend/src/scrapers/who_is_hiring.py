@@ -63,8 +63,9 @@ class WhoIsHiringScraper(BaseScraper):
                 logger.info(f"Found Who Is Hiring thread: {hit.get('title', '')[:80]}")
                 return hit
         
-        logger.warning("No Who Is Hiring thread found in search results")
-        return None
+            logger.warning("No Who Is Hiring thread found in search results")
+            print(">>> [WIH-SCRAPER] WARNING: No Who Is Hiring thread found!")
+            return None
     
     def parse_comment(self, comment: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -189,6 +190,8 @@ class WhoIsHiringScraper(BaseScraper):
         Returns:
             Dict with run statistics.
         """
+        print("\n" + "-" * 50)
+        print(">>> [WIH-SCRAPER] Starting Who Is Hiring scraper run")
         logger.info("Starting Who Is Hiring scraper run")
         
         # Create report entry
@@ -205,40 +208,54 @@ class WhoIsHiringScraper(BaseScraper):
         
         try:
             # Discover latest thread
+            print(">>> [WIH-SCRAPER] Step 1: Discovering Who Is Hiring thread via Algolia...")
             thread = await self.discover_thread()
             if not thread:
+                print(">>> [WIH-SCRAPER] ERROR: No thread discovered. Check Algolia API key and internet connection.")
                 logger.warning("No Who Is Hiring thread found")
                 return {"collected": 0, "new": 0}
             
             thread_id = thread.get("id") or thread.get("objectID")
+            thread_title = thread.get("title", "Unknown")[:60]
+            print(f">>> [WIH-SCRAPER] Found thread ID={thread_id}: '{thread_title}'")
+            
             if not thread_id:
+                print(f">>> [WIH-SCRAPER] ERROR: Thread has no ID field!")
                 logger.error("Thread has no ID")
                 return {"collected": 0, "new": 0}
             
             # Check if this is a new thread
             last_thread_id = self._get_last_thread_id()
             if last_thread_id == int(thread_id):
+                print(f">>> [WIH-SCRAPER] Thread {thread_id} already processed (last run), skipping.")
                 logger.info(f"Thread {thread_id} already processed, skipping")
                 return {"collected": 0, "new": 0}
+            else:
+                print(f">>> [WIH-SCRAPER] New thread detected! Last: {last_thread_id}, Current: {thread_id}")
             
             # Fetch comments via Algolia
+            print(f">>> [WIH-SCRAPER] Step 2: Fetching comments from thread {thread_id} via Algolia...")
             comments = await self.client.fetch_algolia_comments(str(thread_id))
-            logger.info(f"Fetched {len(comments)} comments from thread {thread_id}")
+            print(f">>> [WIH-SCRAPER] Fetched {len(comments)} comments")
             
             # Parse comments into jobs
+            print(f">>> [WIH-SCRAPER] Step 3: Parsing {len(comments)} comments into job listings...")
             jobs = []
+            parse_errors = 0
             for comment in comments:
-                job = self.parse_comment(comment)
-                if job:
-                    jobs.append(job)
-                    
-                    # Also check first nested reply (children[0])
-                    children = comment.get("children", [])
-                    if children and isinstance(children, list):
-                        nested_reply = children[0]
-                        nested_job = self.parse_comment(nested_reply)
-                        if nested_job:
-                            jobs.append(nested_job)
+                try:
+                    job = self.parse_comment(comment)
+                    if job:
+                        jobs.append(job)
+                        # Also check first nested reply (children[0])
+                        children = comment.get("children", [])
+                        if children and isinstance(children, list):
+                            nested_reply = children[0]
+                            nested_job = self.parse_comment(nested_reply)
+                            if nested_job:
+                                jobs.append(nested_job)
+                except Exception as e:
+                    parse_errors += 1
             
             # Deduplicate by company + title
             seen = set()
@@ -249,10 +266,19 @@ class WhoIsHiringScraper(BaseScraper):
                     seen.add(key)
                     unique_jobs.append(job)
             
+            print(f">>> [WIH-SCRAPER] Parsed: {len(jobs)} raw jobs -> {len(unique_jobs)} unique (after dedup)")
+            if parse_errors > 0:
+                print(f">>> [WIH-SCRAPER] Parse errors: {parse_errors}")
             logger.info(f"Parsed {len(unique_jobs)} unique jobs from {len(comments)} comments")
             
             # Save to database
-            total, new_count = await self.save_jobs(unique_jobs)
+            print(f">>> [WIH-SCRAPER] Step 4: Saving {len(unique_jobs)} jobs to database...")
+            try:
+                total, new_count = await self.save_jobs(unique_jobs)
+                print(f">>> [WIH-SCRAPER] Database save complete: {new_count} NEW jobs, {total} total")
+            except Exception as e:
+                print(f">>> [WIH-SCRAPER] DATABASE ERROR: {e}")
+                raise
             
             # Update report
             self._set_last_thread_id(int(thread_id))
@@ -267,10 +293,17 @@ class WhoIsHiringScraper(BaseScraper):
                 report.status = "completed"
                 await session.commit()
             
+            print(f">>> [WIH-SCRAPER] SUCCESS: {new_count} new jobs saved!")
+            print(">>> [WIH-SCRAPER] Scraper run completed successfully")
+            print("-" * 50 + "\n")
             logger.info(f"Who Is Hiring scraper completed: {new_count} new jobs")
             return {"collected": total, "new": new_count}
             
         except Exception as e:
+            print(f">>> [WIH-SCRAPER] ERROR: Scraper failed with exception: {e}")
+            print(f">>> [WIH-SCRAPER] ERROR TYPE: {type(e).__name__}")
+            import traceback
+            print(f">>> [WIH-SCRAPER] TRACE: {traceback.format_exc()}")
             logger.error(f"Who Is Hiring scraper failed: {e}")
             
             async with async_session() as session:

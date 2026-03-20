@@ -10,3 +10,9 @@ logs/*.log
 *.db
 tazakhabar.db
 .DS_Store
+src\__pycache__
+.qodo
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

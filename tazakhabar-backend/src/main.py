@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
+from src.api import jobs_router
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +47,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Include API routers
+app.include_router(jobs_router)
 
 # Add CORS middleware
 app.add_middleware(

@@ -9,7 +9,7 @@ from starlette.responses import Response
 from src.config import settings
 
 
-def setup_logging(log_level: str = None) -> logging.Logger:
+def setup_logging(log_level: str | None = None) -> logging.Logger:
     """
     Configure Python logging module with file and console handlers.
     

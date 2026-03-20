@@ -2,7 +2,7 @@
  * TazaKhabar API client — replaces mock data with live backend calls.
  * @deprecated Data functions are now imported from this module.
  */
-import type { DigestItem, Job } from "@/types";
+import type { DigestItem, Job, Trend } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -96,8 +96,74 @@ export async function fetchNews(params?: {
  * Fetch badge counts (new items since last scrape).
  */
 export async function fetchBadgeCounts(): Promise<{ radar_new_count: number; feed_new_count: number }> {
-  // Badge counts would typically come from a dedicated endpoint
-  // For now, return zeros until that endpoint is implemented
-  // Future: GET /api/badges
-  return { radar_new_count: 0, feed_new_count: 0 };
+  try {
+    const url = `${API_BASE}/api/badge`;
+    const res = await fetch(url, {
+      headers: { "Content-Type": "application/json" },
+      // Poll every 5 minutes, don't cache
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch badge counts: ${res.status}`);
+    }
+
+    const json = await res.json();
+    return {
+      radar_new_count: json.radar_new_count ?? 0,
+      feed_new_count: json.feed_new_count ?? 0,
+    };
+  } catch {
+    // Return zeros on error to avoid breaking the UI
+    return { radar_new_count: 0, feed_new_count: 0 };
+  }
+}
+
+/**
+ * Fetch trending keywords with week-over-week analysis.
+ */
+export async function fetchTrends(params?: {
+  limit?: number;
+}): Promise<{ data: Trend[]; meta: Record<string, unknown> }> {
+  const limit = params?.limit ?? 20;
+  const url = `${API_BASE}/api/trends?limit=${limit}`;
+
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    // Cache for 5 minutes
+    next: { revalidate: 300 },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch trends: ${res.status} ${res.statusText}`);
+  }
+
+  const json = await res.json();
+  return {
+    data: (json.data as Trend[]) ?? [],
+    meta: json.meta ?? {},
+  };
+}
+
+/**
+ * Trigger report refresh (swap Report 2 → Report 1).
+ */
+export async function triggerRefresh(): Promise<{ status: string; radar_new_count: number; feed_new_count: number }> {
+  const url = `${API_BASE}/api/refresh`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to trigger refresh: ${res.status} ${res.statusText}`);
+  }
+
+  const json = await res.json();
+  return {
+    status: json.status ?? "swapped",
+    radar_new_count: json.radar_new_count ?? 0,
+    feed_new_count: json.feed_new_count ?? 0,
+  };
 }

@@ -1,13 +1,30 @@
 import AppShell from "@/components/AppShell";
-import { trends, signals } from "@/lib/mockData";
+import { fetchTrends } from "@/lib/api";
+import type { Trend } from "@/types";
 
-export default function TrendsPage() {
-  const avgChange =
-    trends.reduce((acc, t) => acc + t.weeklyChange, 0) / trends.length;
-  const topSkill = trends[0];
+export default async function TrendsPage() {
+  // Fetch live trends data from API
+  let trends: Trend[] = [];
+  let meta: Record<string, unknown> = {};
+  
+  try {
+    const response = await fetchTrends({ limit: 20 });
+    trends = response.data;
+    meta = response.meta;
+  } catch {
+    // If API fails, show empty state (no mock fallback per TRND-07)
+    trends = [];
+  }
+
+  const avgChange = trends.length > 0
+    ? trends.reduce((acc, t) => acc + t.weeklyChange, 0) / trends.length
+    : 0;
+  const topSkill = trends[0]?.skill ?? "N/A";
 
   const moodScore = Math.round(
-    trends.reduce((acc, t) => acc + t.percentage, 0) / trends.length,
+    trends.length > 0
+      ? trends.reduce((acc, t) => acc + t.percentage, 0) / trends.length
+      : 0,
   );
 
   const moodLabel =
@@ -15,8 +32,9 @@ export default function TrendsPage() {
       ? "NEUTRAL_SIGNAL"
       : "TIGHTENING_GRIP";
 
-  const booming = trends.slice(0, 4);
-  const declining = trends.slice(4);
+  // Split booming and declining from live data
+  const booming = trends.filter(t => t.weeklyChange > 20).slice(0, 4);
+  const declining = trends.filter(t => t.weeklyChange < -20).slice(0, 3);
 
   return (
     <AppShell>
@@ -36,7 +54,7 @@ export default function TrendsPage() {
           />
           <StatCard
             label="TOP_SKILL_OF_WEEK"
-            value={topSkill.skill}
+            value={topSkill}
             accent="neutral"
           />
           <StatCard
@@ -82,27 +100,13 @@ export default function TrendsPage() {
           </div>
 
           <div className="space-y-4">
-            {signals.map((s, idx) => (
-              <article
-                key={s.date + idx}
-                className="brutalist-border bg-card-dark p-5 news-card-border"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <p className="mono-label text-[10px] text-dim-text uppercase">
-                    {s.date}
-                  </p>
-                  <span className="mono-label text-[10px] text-primary uppercase">
-                    {s.category}
-                  </span>
-                </div>
-                <h3 className="font-serif text-[18px] font-black mt-3">
-                  {s.headline}
-                </h3>
-                <p className="mono-label text-[10px] text-dim-text mt-2 uppercase tracking-[0.05em]">
-                  {s.source}
-                </p>
-              </article>
-            ))}
+            {/* Signals from trend data will be shown in Phase 2 UI */}
+            {/* For now, show placeholder cards */}
+            {booming.length === 0 && declining.length === 0 && (
+              <p className="mono-label text-[11px] text-dim-text uppercase">
+                Trends are being computed. Check back after your first scrape cycle.
+              </p>
+            )}
           </div>
         </section>
 
@@ -167,7 +171,7 @@ function StatCard({
   );
 }
 
-function TrendBarRow({ t }: { t: (typeof trends)[number] }) {
+function TrendBarRow({ t }: { t: Trend }) {
   return (
     <div
       className="flex items-center gap-4 border border-border-dark bg-card-dark p-4"

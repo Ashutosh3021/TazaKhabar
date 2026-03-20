@@ -12,18 +12,55 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 
+async def _run_scraper_with_notifications(scraper_func):
+    """
+    Wrapper to run a scraper and then process notifications.
+    
+    After each scraper run, check for matching users and queue notifications.
+    Then process the notification queue.
+    """
+    from src.db.database import async_session
+    from src.notifications import check_and_queue_notifications
+    
+    result = await scraper_func()
+    
+    async with async_session() as session:
+        queued = await check_and_queue_notifications(session)
+        if queued > 0:
+            logger.info(f"Queued {queued} notifications after scraper run")
+    
+    return result
+
+
+async def _who_is_hiring_job():
+    """Who Is Hiring scraper wrapped with notification processing."""
+    from .scrapers.who_is_hiring import WhoIsHiringScraper
+    return await _run_scraper_with_notifications(WhoIsHiringScraper().run)
+
+
+async def _top_stories_job():
+    """Top Stories scraper wrapped with notification processing."""
+    from .scrapers.top_stories import TopStoriesScraper
+    return await _run_scraper_with_notifications(TopStoriesScraper().run)
+
+
+async def _ask_hn_job():
+    """Ask HN scraper wrapped with notification processing."""
+    from .scrapers.ask_hn import AskHNScraper
+    return await _run_scraper_with_notifications(AskHNScraper().run)
+
+
+async def _show_hn_job():
+    """Show HN scraper wrapped with notification processing."""
+    from .scrapers.show_hn import ShowHNScraper
+    return await _run_scraper_with_notifications(ShowHNScraper().run)
+
+
 def start_scheduler() -> None:
     """Start the APScheduler with all configured jobs."""
-    # Import scrapers here to avoid circular imports
-    from .scrapers.top_stories import TopStoriesScraper
-    from .scrapers.ask_hn import AskHNScraper
-    from .scrapers.show_hn import ShowHNScraper
-    from .scrapers.who_is_hiring import WhoIsHiringScraper
-    from .services.trend_service import compute_keyword_frequencies
-    
     # Who Is Hiring: every 2 hours
     scheduler.add_job(
-        WhoIsHiringScraper().run,
+        _who_is_hiring_job,
         trigger=CronTrigger(hour="*/2"),
         id="who_is_hiring",
         name="Who Is Hiring Scraper",
@@ -31,8 +68,9 @@ def start_scheduler() -> None:
     )
     
     # Trend computation: every 24 hours (weekly keyword frequency analysis)
+    from .services.trend_service import compute_keyword_frequencies as _compute_trends
     scheduler.add_job(
-        compute_keyword_frequencies,
+        _compute_trends,
         trigger=CronTrigger(hour="0"),  # Run at midnight UTC
         id="compute_trends",
         name="Keyword Frequency Computation",
@@ -41,7 +79,7 @@ def start_scheduler() -> None:
     
     # Top Stories: every 2 hours
     scheduler.add_job(
-        TopStoriesScraper().run,
+        _top_stories_job,
         trigger=CronTrigger(hour="*/2"),
         id="top_stories",
         name="Top Stories Scraper",
@@ -50,7 +88,7 @@ def start_scheduler() -> None:
     
     # Ask HN: every 4 hours
     scheduler.add_job(
-        AskHNScraper().run,
+        _ask_hn_job,
         trigger=CronTrigger(hour="*/4"),
         id="ask_hn",
         name="Ask HN Scraper",
@@ -59,7 +97,7 @@ def start_scheduler() -> None:
     
     # Show HN: every 6 hours
     scheduler.add_job(
-        ShowHNScraper().run,
+        _show_hn_job,
         trigger=CronTrigger(hour="*/6"),
         id="show_hn",
         name="Show HN Scraper",

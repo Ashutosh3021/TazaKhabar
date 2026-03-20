@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router
+from src.middleware.logging import RequestLoggingMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -63,6 +64,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/health")

@@ -532,6 +532,110 @@ Visit `http://localhost:3000`
 
 ---
 
+## Phase 1 Verification Checklist
+
+After starting the backend, verify everything is working:
+
+### Start Backend
+```bash
+cd tazakhabar-backend
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+Expected output shows all 5 routers registered and scheduler started.
+
+### Test All API Endpoints
+```bash
+# Health check
+curl http://localhost:8000/health
+# -> {"status":"healthy","timestamp":"..."}
+
+# Badge counter
+curl http://localhost:8000/api/badge
+# -> {"radar_new_count":0,"feed_new_count":0}
+
+# Jobs feed (empty before scrapers run)
+curl "http://localhost:8000/api/jobs"
+curl "http://localhost:8000/api/jobs?roles=Frontend&remote=true"
+
+# News feed (empty before scrapers run)
+curl "http://localhost:8000/api/news"
+curl "http://localhost:8000/api/news?type=ask_hn"
+
+# Trends
+curl http://localhost:8000/api/trends
+
+# Refresh / swap reports
+curl -X POST http://localhost:8000/api/refresh
+# -> {"status":"swapped","radar_new_count":0,"feed_new_count":0}
+```
+
+### Run HN Scrapers Manually
+```bash
+cd tazakhabar-backend
+python -c "
+import asyncio
+from src.scrapers.top_stories import TopStoriesScraper
+from src.scrapers.ask_hn import AskHNScraper
+from src.scrapers.show_hn import ShowHNScraper
+
+async def run():
+    r1 = await TopStoriesScraper().run()
+    r2 = await AskHNScraper().run()
+    r3 = await ShowHNScraper().run()
+    print(f'Top Stories: {r1}')
+    print(f'Ask HN: {r2}')
+    print(f'Show HN: {r3}')
+
+asyncio.run(run())
+"
+# Expected: >>> [TOP-STORIES] SUCCESS: N NEW items saved!
+```
+
+### Verify Data End-to-End
+```bash
+# 1. Run scrapers (above)
+# 2. Swap so scraped data becomes visible
+curl -X POST http://localhost:8000/api/refresh
+
+# 3. News API should return data
+curl "http://localhost:8000/api/news"
+# -> {"data":[...],"meta":{"total":194,...}}
+
+# 4. Badge shows non-zero
+curl http://localhost:8000/api/badge
+# -> {"radar_new_count":0,"feed_new_count":194}
+```
+
+### Common Errors & Fixes
+| Error | Fix |
+|---|---|
+| Port 8000 in use | `netstat -ano \| findstr :8000` then kill PID |
+| Module not found | Make sure you're in `tazakhabar-backend/` |
+| 0 new items saved | Deduplication working — items already in DB |
+| Badge validation error | Pull latest commit (`8367ce3`+) |
+
+### Database Contents
+```bash
+cd tazakhabar-backend
+python -c "
+from src.db.database import async_session
+from sqlalchemy import select, func
+from src.db.models import Job, News, Report
+import asyncio
+
+async def check():
+    async with async_session() as s:
+        j = (await s.execute(select(func.count(Job.id)))).scalar()
+        n = (await s.execute(select(func.count(News.id)))).scalar()
+        r = (await s.execute(select(func.count(Report.id)))).scalar()
+        print(f'Jobs: {j} | News: {n} | Reports: {r}')
+
+asyncio.run(check())
+"
+```
+
+---
+
 ## Environment Variables
 
 ```env

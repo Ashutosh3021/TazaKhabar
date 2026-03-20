@@ -19,6 +19,7 @@ def start_scheduler() -> None:
     from .scrapers.ask_hn import AskHNScraper
     from .scrapers.show_hn import ShowHNScraper
     from .scrapers.who_is_hiring import WhoIsHiringScraper
+    from .services.trend_service import compute_keyword_frequencies
     
     # Who Is Hiring: every 2 hours
     scheduler.add_job(
@@ -26,6 +27,15 @@ def start_scheduler() -> None:
         trigger=CronTrigger(hour="*/2"),
         id="who_is_hiring",
         name="Who Is Hiring Scraper",
+        replace_existing=True,
+    )
+    
+    # Trend computation: every 24 hours (weekly keyword frequency analysis)
+    scheduler.add_job(
+        compute_keyword_frequencies,
+        trigger=CronTrigger(hour="0"),  # Run at midnight UTC
+        id="compute_trends",
+        name="Keyword Frequency Computation",
         replace_existing=True,
     )
     

@@ -12,6 +12,52 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 
+async def _compute_trends_with_observation():
+    """
+    Compute keyword frequencies and generate market observation.
+    Called daily at midnight UTC by the scheduler.
+    """
+    from src.db.database import async_session
+    from src.db.models import Observation
+
+    print(">>> [JOB] Starting trends computation + observation generation...")
+
+    async with async_session() as session:
+        # Step 1: Compute keyword frequencies
+        from src.services.trend_service import compute_keyword_frequencies
+        trends = await compute_keyword_frequencies(session)
+
+        # Step 2: Extract booming and declining keywords
+        booming = [t["keyword"] for t in trends if t.get("percentage_change", 0) > 20]
+        declining = [t["keyword"] for t in trends if t.get("percentage_change", 0) < -20]
+        booming.sort(key=lambda kw: next((t["percentage_change"] for t in trends if t["keyword"] == kw), 0), reverse=True)
+        declining.sort(key=lambda kw: abs(next((t["percentage_change"] for t in trends if t["keyword"] == kw), 0)), reverse=True)
+
+        print(f">>> [JOB] Trends: {len(booming)} booming, {len(declining)} declining keywords")
+
+        # Step 3: Generate observation text
+        from src.services.llm_service import generate_observation_text
+        observation_text = await generate_observation_text(
+            booming_keywords=booming[:10],
+            declining_keywords=declining[:10],
+        )
+
+        # Step 4: Save to Observation table
+        from datetime import datetime, timedelta
+        week_end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = week_end - timedelta(days=7)
+
+        observation = Observation(
+            week_start=week_start,
+            text=observation_text,
+            generated_at=datetime.utcnow(),
+        )
+        session.add(observation)
+        await session.commit()
+
+        print(f">>> [JOB] Generated market observation for week of {week_start.date()}: {observation_text[:80]}...")
+
+
 async def _run_scraper_with_notifications(scraper_func):
     """
     Wrapper to run a scraper and then process notifications.
@@ -70,16 +116,15 @@ def start_scheduler() -> None:
     )
     print("    + [JOB-1] Who Is Hiring -> runs every 2 hours (Algolia)")
     
-    # Trend computation: every 24 hours (weekly keyword frequency analysis)
-    from .services.trend_service import compute_keyword_frequencies as _compute_trends
+    # Trend computation + observation generation: every 24 hours (weekly keyword frequency analysis + LLM observation)
     scheduler.add_job(
-        _compute_trends,
+        _compute_trends_with_observation,
         trigger=CronTrigger(hour="0"),  # Run at midnight UTC
         id="compute_trends",
-        name="Keyword Frequency Computation",
+        name="Trends + Market Observation",
         replace_existing=True,
     )
-    print("    + [JOB-2] Trends Computation -> runs daily at midnight UTC")
+    print("    + [JOB-2] Trends + Observation -> runs daily at midnight UTC")
     
     # Top Stories: every 2 hours
     scheduler.add_job(

@@ -1,6 +1,7 @@
 """
 Base scraper class with shared logic for deduplication and bulk inserts.
 """
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -132,6 +133,17 @@ class BaseScraper:
                     continue
             
             await session.commit()
-        
+
         logger.info(f"Saved {new_count}/{total} new {news_type} items")
+
+        # Schedule summarization for top 20 items (fire-and-forget, non-blocking)
+        if new_count > 0:
+            try:
+                from src.services.llm_service import summarize_top_news
+                loop = asyncio.get_running_loop()
+                loop.create_task(summarize_top_news(top_n=20))
+                logger.info("Scheduled news summarization for top 20 items")
+            except Exception as e:
+                logger.warning(f"Failed to schedule summarization: {e}")
+
         return total, new_count

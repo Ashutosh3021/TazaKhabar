@@ -82,3 +82,10 @@ class RefreshResponse(BaseModel):
     status: str = Field(default="swapped", description="Status of the refresh operation")
     radar_new_count: int = Field(default=0, description="New job count after swap")
     feed_new_count: int = Field(default=0, description="New news count after swap")
+
+
+class ObservationResponse(BaseModel):
+    """Market observation response from LLM."""
+    text: str
+    generated_at: str | None = None
+    fallback: bool = False

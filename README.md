@@ -1,7 +1,7 @@
 # TazaKhabar
 
-![Status](https://img.shields.io/badge/status-Phase%201%20Complete-FF2D00?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.0.0-black?style=for-the-badge)
+![Status](https://img.shields.io/badge/status-Phase%202%20Complete-FF2D00?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.1.0-black?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-FF2D00?style=for-the-badge)
 ![React Doctor](https://img.shields.io/badge/React%20Doctor-96%2F100-black?style=for-the-badge&logo=react)
 ![Next.js](https://img.shields.io/badge/Next.js_14-black?style=for-the-badge&logo=nextdotjs)
@@ -427,43 +427,51 @@ flowchart LR
 
 ```
 tazakhabar/
-├── src/                         # Next.js 14 Frontend (existing)
+├── src/                         # Next.js 14 Frontend (Phase 1 + 2)
 │   ├── app/
 │   │   ├── page.tsx             # Splash + Login
-│   │   ├── jobs/                # Job Radar screen
-│   │   ├── digest/              # News Feed screen
-│   │   ├── trends/              # Trends screen
-│   │   └── profile/             # Profile screen
+│   │   ├── jobs/                # Job Radar screen (ghost + deadline badges)
+│   │   ├── digest/              # News Feed screen (match % badges)
+│   │   ├── trends/              # Trends screen (observation block)
+│   │   └── profile/             # Profile screen (ATS, countdown timer)
 │   ├── components/
 │   └── lib/
-│       ├── api.ts               # API client (Phase 1: live)
-│       └── mockData.ts          # Deprecated (Phase 1: replaced)
+│       ├── api.ts               # API client (Phase 1 + 2: live)
+│       └── mockData.ts          # Deprecated
 │
-└── tazakhabar-backend/         # FastAPI Backend (Phase 1: built)
+└── tazakhabar-backend/         # FastAPI Backend (Phase 1 + 2)
     ├── src/
-    │   ├── main.py              # FastAPI app + lifespan
+    │   ├── main.py              # FastAPI app + lifespan (embedding model loaded)
     │   ├── config.py            # Pydantic settings
     │   ├── db/
     │   │   ├── database.py      # Async SQLite session
-    │   │   ├── models.py        # SQLAlchemy 2.0 models (8 tables)
-    │   │   └── schemas.py       # Pydantic request/response models
+    │   │   ├── models.py        # SQLAlchemy 2.0 models (9 tables + Observation)
+    │   │   └── schemas.py       # Pydantic models (Phase 1 + 2)
     │   ├── api/
     │   │   ├── jobs.py          # GET /api/jobs
     │   │   ├── news.py          # GET /api/news
     │   │   ├── trends.py        # GET /api/trends
     │   │   ├── badge.py         # GET /api/badge
-    │   │   └── refresh.py       # POST /api/refresh
+    │   │   ├── refresh.py       # POST /api/refresh
+    │   │   ├── observation.py   # GET /api/observation (Phase 2)
+    │   │   ├── resume.py       # POST /api/resume/analyse (Phase 2)
+    │   │   ├── profile.py       # GET + POST /api/profile (Phase 2)
+    │   │   └── digest.py        # GET /api/digest (Phase 2)
     │   ├── scrapers/
     │   │   ├── client.py        # HN Firebase + Algolia client
-    │   │   ├── base_scraper.py  # Shared deduplication + bulk insert
+    │   │   ├── base_scraper.py  # Shared + summarization + embedding scheduling
     │   │   ├── who_is_hiring.py # Who Is Hiring (Algolia, 2hr)
     │   │   ├── ask_hn.py        # Ask HN (Firebase, 4hr)
     │   │   ├── show_hn.py       # Show HN (Firebase, 6hr)
     │   │   └── top_stories.py   # Top Stories (Firebase, 2hr)
     │   ├── services/
     │   │   ├── report_service.py # Report 1/2 cycle + badge counts
-    │   │   └── trend_service.py  # Keyword frequency + week-over-week
-    │   ├── scheduler.py          # APScheduler (5 jobs registered)
+    │   │   ├── trend_service.py  # Keyword frequency + week-over-week
+    │   │   ├── llm_service.py   # Gemini client + retry + rate limiting (Phase 2)
+    │   │   ├── resume_service.py # PDF extraction + ATS scoring (Phase 2)
+    │   │   ├── embedding_service.py # sentence-transformers + cosine similarity (Phase 2)
+    │   │   └── digest_service.py # Blended digest computation (Phase 2)
+    │   ├── scheduler.py          # APScheduler (observation job replaces trends job)
     │   ├── notifications.py      # NotificationService (dormant Supabase)
     │   └── middleware/
     │       └── logging.py        # RequestLoggingMiddleware
@@ -471,7 +479,7 @@ tazakhabar/
     ├── Dockerfile                # Railway deployment
     ├── railway.json              # Railway config
     ├── .env.example              # Environment template
-    └── requirements.txt         # Python dependencies
+    └── requirements.txt         # Python dependencies (Phase 1 + 2)
 ```
 
 ---
@@ -494,7 +502,13 @@ You should see:
     + /api/trends registered
     + /api/badge registered
     + /api/refresh registered
+    + /api/observation registered
+    + /api/resume registered
+    + /api/profile registered
+    + /api/digest registered
 >>> [SCHEDULER] Started with 5 jobs registered
+>>> [EMBEDDING] Loading sentence-transformers model...
+>>> [OK] Embedding model loaded: all-MiniLM-L6-v2 (384 dims)
 ```
 
 ### 2. Test All Endpoints
@@ -514,6 +528,12 @@ curl http://localhost:8000/api/news
 # Trends
 curl http://localhost:8000/api/trends
 
+# Market observation (Phase 2)
+curl http://localhost:8000/api/observation
+
+# Personalized digest (Phase 2)
+curl http://localhost:8000/api/digest
+
 # Refresh (swap reports)
 curl -X POST http://localhost:8000/api/refresh
 ```
@@ -532,7 +552,7 @@ Visit `http://localhost:3000`
 
 ---
 
-## Phase 1 Verification Checklist
+## Verification Checklist
 
 After starting the backend, verify everything is working:
 
@@ -613,6 +633,9 @@ curl http://localhost:8000/api/badge
 | Module not found | Make sure you're in `tazakhabar-backend/` |
 | 0 new items saved | Deduplication working — items already in DB |
 | Badge validation error | Pull latest commit (`8367ce3`+) |
+| Gemini 429 / rate limit | Wait until midnight UTC or set `GEMINI_API_KEY` with higher quota |
+| sentence-transformers slow first load | Normal — model downloads on first run (~22MB) |
+| Summarization not showing | Run scrapers to create news items, then summarization fires automatically |
 
 ### Database Contents
 ```bash
@@ -620,7 +643,7 @@ cd tazakhabar-backend
 python -c "
 from src.db.database import async_session
 from sqlalchemy import select, func
-from src.db.models import Job, News, Report
+from src.db.models import Job, News, Report, Observation, Embedding
 import asyncio
 
 async def check():
@@ -628,7 +651,9 @@ async def check():
         j = (await s.execute(select(func.count(Job.id)))).scalar()
         n = (await s.execute(select(func.count(News.id)))).scalar()
         r = (await s.execute(select(func.count(Report.id)))).scalar()
-        print(f'Jobs: {j} | News: {n} | Reports: {r}')
+        o = (await s.execute(select(func.count(Observation.id)))).scalar()
+        e = (await s.execute(select(func.count(Embedding.id)))).scalar()
+        print(f'Jobs: {j} | News: {n} | Reports: {r} | Observations: {o} | Embeddings: {e}')
 
 asyncio.run(check())
 "
@@ -640,19 +665,19 @@ asyncio.run(check())
 
 ```env
 # Backend .env
-GEMINI_API_KEY=your_key_here                    # Optional for Phase 1
+GEMINI_API_KEY=your_key_here                    # REQUIRED for Phase 2 (summarization, ATS, observation)
 DATABASE_URL=sqlite+aiosqlite:///./tazakhabar.db
 ALLOWED_ORIGINS=http://localhost:3000,https://tazakhabar.vercel.app,https://*.vercel.app
 LOG_LEVEL=INFO
-# SUPABASE_URL=add_later                       # Phase 2
-# SUPABASE_KEY=add_later                       # Phase 2
+# SUPABASE_URL=add_later                       # Phase 3
+# SUPABASE_KEY=add_later                       # Phase 3
 # STRIPE_SECRET_KEY=add_later                  # Phase 3
 # STRIPE_WEBHOOK_SECRET=add_later              # Phase 3
 
 # Frontend .env.local
 NEXT_PUBLIC_API_URL=http://localhost:8000
-# NEXT_PUBLIC_SUPABASE_URL=add_later           # Phase 2
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=add_later       # Phase 2
+# NEXT_PUBLIC_SUPABASE_URL=add_later           # Phase 3
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=add_later       # Phase 3
 # NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=add_later  # Phase 3
 ```
 
@@ -672,13 +697,18 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | Badge counter + 5-min polling | DONE | `/api/badge` + TopNav polling |
 | Railway deployment ready | DONE | Dockerfile + railway.json |
 | CORS, logging, health check | DONE | All endpoints verified |
-| Gemini integration | TODO | Phase 2 |
-| Summarization and trend narration | TODO | Phase 2 (observation placeholder) |
-| PDF resume parsing | TODO | Phase 2 (scaffolded) |
-| ATS scoring and keyword suggestions | TODO | Phase 2 |
-| Personalization and RAG pipeline | TODO | Phase 2 |
+| Gemini LLM integration | DONE | `gemini-2.0-flash` auto-selected, Tenacity retry, rate limiting |
+| News summarization | DONE | Top 20 by score, 2-3 sentences, fire-and-forget |
+| Market observation generation | DONE | Daily at midnight, booming/declining keywords, `/api/observation` |
+| PDF resume parsing | DONE | PyMuPDF, PDF + TXT, 5MB limit |
+| ATS scoring | DONE | 0-100 score, top 3 critical fixes, missing keywords |
+| Suggested additions | DONE | Gemini generates from resume + roles + trending keywords |
+| RAG personalization | DONE | sentence-transformers all-MiniLM-L6-v2, cosine similarity |
+| Personalized digest | DONE | Blended scoring, 5 items/page, `/api/digest` |
+| Frontend — all pages wired | DONE | Profile, digest, trends, jobs connected to Phase 2 APIs |
+| Ghost job + deadline badges | DONE | Job cards show "LIKELY GHOST" and "DEADLINE UNKNOWN" |
 | ML trend prediction model | TODO | Phase 3 |
-| Supabase integration | TODO | Phase 2 (SQLite-first) |
+| Supabase integration | TODO | Phase 3 |
 | Stripe monetization | TODO | Phase 3 |
 
 ---

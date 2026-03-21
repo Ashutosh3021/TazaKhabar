@@ -123,3 +123,16 @@ class ProfileUpdateRequest(BaseModel):
     roles: list[str] = Field(default_factory=list)
     experience_level: str = "I"
     preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+class DigestItemResponse(BaseModel):
+    """Individual digest item with personalization data."""
+    id: str
+    headline: str
+    source: str
+    summary: str
+    category: str
+    readTime: str = "5 min read"
+    score: int = 0
+    match_percentage: int = 0
+    featured: bool = False

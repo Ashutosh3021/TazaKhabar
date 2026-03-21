@@ -120,11 +120,12 @@ async def update_profile(
         # Refresh to get latest state
         await session.refresh(user)
 
-        # Trigger embedding regeneration (placeholder — 02-03 will implement)
+        # Trigger embedding regeneration on profile save
         try:
+            import asyncio
             from src.services.embedding_service import generate_user_embedding
 
-            loop = __import__("asyncio").get_running_loop()
+            loop = asyncio.get_running_loop()
             loop.create_task(
                 generate_user_embedding(
                     user_id=user.id,
@@ -136,7 +137,7 @@ async def update_profile(
             )
             print(f">>> [API:POST /api/profile] Triggered embedding regeneration")
         except ImportError:
-            print(f">>> [API:POST /api/profile] Embedding service not yet available (Plan 02-03)")
+            print(f">>> [API:POST /api/profile] Embedding service import failed (may be circular)")
         except Exception as e:
             print(f">>> [API:POST /api/profile] Embedding regeneration failed: {e}")
 

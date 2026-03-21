@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router
+from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Configure logging
@@ -43,6 +43,12 @@ async def lifespan(app: FastAPI):
         print(f">>> [ERROR] Database initialization failed: {e}")
         raise
     
+    # Load embedding model at startup (CPU-bound, loaded once)
+    print(">>> [STARTUP] Loading embedding model...")
+    from src.services.embedding_service import get_embedding_model
+    model = get_embedding_model()
+    print(">>> [OK] Embedding model loaded")
+
     # Import and start scheduler
     print(">>> [STARTUP] Starting scraper scheduler...")
     from src.scheduler import start_scheduler, stop_scheduler
@@ -88,6 +94,8 @@ app.include_router(resume_router)
 print("    + /api/resume registered")
 app.include_router(profile_router)
 print("    + /api/profile registered")
+app.include_router(digest_router)
+print("    + /api/digest registered")
 
 # Add CORS middleware
 print(">>> [SETUP] Configuring CORS middleware...")

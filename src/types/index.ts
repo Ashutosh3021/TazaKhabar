@@ -11,7 +11,7 @@ export interface Job {
   companySize: string;
   salary: string;
   fundingStage: string;
-  deadline?: string; // e.g. "25 DEC"
+  deadline?: string | null; // e.g. "25 DEC" or null
   skills: string[];
   postedDays: number;
   hiringStatus: HiringStatus;
@@ -20,6 +20,7 @@ export interface Job {
   experienceTier: "I" | "II" | "III" | "IV";
   emailAvailable?: boolean;
   applyAvailable?: boolean;
+  is_ghost_job?: boolean; // QUAL-07: true if likely ghost job
 }
 
 export interface Trend {
@@ -43,6 +44,7 @@ export interface DigestItem {
   category: "ALL" | "HIRING" | "LAYOFFS" | "FUNDING" | "SKILLS";
   readTime: string;
   featured?: boolean;
+  match_percentage?: number;  // RAG similarity score 0-100
 }
 
 export interface UserProfile {

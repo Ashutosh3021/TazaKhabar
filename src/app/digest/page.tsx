@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { digestItems as mockDigestItems } from "@/lib/mockData"; // DEPRECATED fallback
 import { useTaza } from "@/components/TazaContext";
-import { fetchNews } from "@/lib/api";
+import { fetchDigest } from "@/lib/api";
 import type { DigestItem } from "@/types";
 
 type Tab = "ALL" | "HIRING" | "LAYOFFS" | "FUNDING" | "SKILLS";
@@ -23,30 +23,26 @@ export default function DigestPage() {
   const [digestItems, setDigestItems] = useState<DigestItem[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // Fetch news from live API when version changes or tab changes
+  // Fetch personalized digest from API when version changes or tab changes
   useEffect(() => {
     let cancelled = false;
-    async function loadNews() {
+    async function loadDigest() {
       try {
-        const result = await fetchNews({
-          type: tab === "ALL" ? undefined : tab.toLowerCase(),
-          skip: 0,
-          limit: 20,
-        });
+        const result = await fetchDigest({ skip: 0, limit: 20 });
         if (!cancelled) {
-          setDigestItems(result.data);
+          setDigestItems(result.data as DigestItem[]);
           setApiError(null);
         }
       } catch (err) {
         if (!cancelled) {
-          setApiError(err instanceof Error ? err.message : "Failed to load news");
+          setApiError(err instanceof Error ? err.message : "Failed to load digest");
           setDigestItems([]);
         }
       }
     }
-    loadNews();
+    loadDigest();
     return () => { cancelled = true; };
-  }, [feedVersion, tab]);
+  }, [feedVersion]);
 
   const featured = useMemo(
     () => {
@@ -122,9 +118,16 @@ export default function DigestPage() {
               <span className="mono-label text-[10px] text-dim-text uppercase">
                 READ TIME · {featured.readTime}
               </span>
-              <span className="mono-label text-[10px] text-primary uppercase">
-                {featured.category}
-              </span>
+              <div className="flex items-center gap-3">
+                {featured.match_percentage !== undefined && featured.match_percentage > 0 && (
+                  <span className="mono-label text-[10px] px-2 py-1 bg-primary/10 border border-primary/40 text-primary uppercase tracking-[0.05em]">
+                    {featured.match_percentage}% MATCH
+                  </span>
+                )}
+                <span className="mono-label text-[10px] text-primary uppercase">
+                  {featured.category}
+                </span>
+              </div>
             </div>
           </article>
         ) : null}
@@ -249,9 +252,16 @@ function DigestRow({
         <span className="mono-label text-[10px] px-2 py-1 border border-border-dark text-dim-text uppercase tracking-[0.05em]">
           {item.category}
         </span>
-        <span className="mono-label text-[10px] text-dim-text uppercase">
-          {item.readTime}
-        </span>
+        <div className="flex items-center gap-3">
+          {item.match_percentage !== undefined && item.match_percentage > 0 && (
+            <span className="mono-label text-[10px] px-2 py-1 bg-primary/10 border border-primary/40 text-primary uppercase tracking-[0.05em]">
+              {item.match_percentage}% MATCH
+            </span>
+          )}
+          <span className="mono-label text-[10px] text-dim-text uppercase">
+            {item.readTime}
+          </span>
+        </div>
       </div>
     </article>
   );

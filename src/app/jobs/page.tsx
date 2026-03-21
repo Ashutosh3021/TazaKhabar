@@ -662,9 +662,14 @@ function JobCard({
     <article className="brutalist-border bg-card-dark p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <p className="mono-label text-[10px] text-dim-text">
-            {job.company}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="mono-label text-[10px] text-dim-text">
+              {job.company}
+            </p>
+            {job.is_ghost_job && (
+              <span className="px-2 py-0.5 text-[9px] font-bold bg-red-600 text-white uppercase tracking-[0.05em]">LIKELY GHOST</span>
+            )}
+          </div>
           <h3 className="font-serif text-[20px] font-black leading-tight">
             {job.title}
           </h3>
@@ -709,11 +714,13 @@ function JobCard({
       <div className="flex gap-4 pt-2">
         <button
           type="button"
-          disabled={!job.emailAvailable}
+          disabled={!job.emailAvailable || job.is_ghost_job}
           className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border ${
-            job.emailAvailable
-              ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
-              : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
+            job.is_ghost_job
+              ? "border-border-dark text-[#444]/40 bg-[#000000]/5 cursor-not-allowed"
+              : job.emailAvailable
+                ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
+                : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
           }`}
         >
           <span className="material-symbols-outlined text-sm mr-2">
@@ -723,11 +730,13 @@ function JobCard({
         </button>
         <button
           type="button"
-          disabled={!job.applyAvailable}
+          disabled={!job.applyAvailable || job.is_ghost_job}
           className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border ${
-            job.applyAvailable
-              ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
-              : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
+            job.is_ghost_job
+              ? "border-border-dark text-[#444]/40 bg-[#000000]/5 cursor-not-allowed"
+              : job.applyAvailable
+                ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
+                : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
           }`}
         >
           <span className="material-symbols-outlined text-sm mr-2">
@@ -739,17 +748,18 @@ function JobCard({
 
       <div className="flex items-center justify-between mt-auto pt-2">
         <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.05em]">
-          Posted {job.postedDays} days ago · {job.fundingStage} ·{" "}
-          {job.deadline ? (
-            <span className="text-dim-text">CLOSES {job.deadline}</span>
-          ) : (
-            <span className="text-[#444]">DEADLINE UNKNOWN</span>
-          )}
+          Posted {job.postedDays} days ago · {job.fundingStage}
         </p>
         <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.05em]">
           LVL {job.experienceTier}
         </p>
       </div>
+      {!job.deadline && (
+        <p className="mono-label text-[9px] text-[#666] uppercase tracking-[0.05em]">DEADLINE UNKNOWN</p>
+      )}
+      {job.deadline && (
+        <p className="mono-label text-[9px] text-dim-text uppercase tracking-[0.05em]">CLOSES {job.deadline}</p>
+      )}
     </article>
   );
 }

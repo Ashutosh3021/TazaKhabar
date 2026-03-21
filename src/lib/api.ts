@@ -24,6 +24,25 @@ function buildQuery(params: Record<string, unknown>): string {
 }
 
 /**
+ * Get user ID from localStorage profile.
+ */
+function getUserIdHeader(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const profile = localStorage.getItem("tazakhabar:userProfile");
+      if (profile) {
+        const parsed = JSON.parse(profile);
+        if (parsed.id) headers["X-User-ID"] = parsed.id;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return headers;
+}
+
+/**
  * Fetch paginated jobs from the backend API.
  */
 export async function fetchJobs(filters?: {
@@ -45,7 +64,6 @@ export async function fetchJobs(filters?: {
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
-    // Next.js caching: revalidate every 5 minutes
     next: { revalidate: 300 },
   });
 
@@ -100,7 +118,6 @@ export async function fetchBadgeCounts(): Promise<{ radar_new_count: number; fee
     const url = `${API_BASE}/api/badge`;
     const res = await fetch(url, {
       headers: { "Content-Type": "application/json" },
-      // Poll every 5 minutes, don't cache
       cache: "no-store",
     });
 
@@ -114,7 +131,6 @@ export async function fetchBadgeCounts(): Promise<{ radar_new_count: number; fee
       feed_new_count: json.feed_new_count ?? 0,
     };
   } catch {
-    // Return zeros on error to avoid breaking the UI
     return { radar_new_count: 0, feed_new_count: 0 };
   }
 }
@@ -130,7 +146,6 @@ export async function fetchTrends(params?: {
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
-    // Cache for 5 minutes
     next: { revalidate: 300 },
   });
 
@@ -166,4 +181,139 @@ export async function triggerRefresh(): Promise<{ status: string; radar_new_coun
     radar_new_count: json.radar_new_count ?? 0,
     feed_new_count: json.feed_new_count ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: Intelligence & Personalization APIs
+// ---------------------------------------------------------------------------
+
+/**
+ * Upload and analyze a resume. Returns ATS score, critical issues, suggested additions.
+ */
+export async function analyseResume(file: File): Promise<{
+  ats_score: number;
+  critical_issues: string[];
+  missing_keywords: string[];
+  suggested_additions: string[];
+  resume_text_length: number;
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/resume/analyse`, {
+    method: "POST",
+    headers: getUserIdHeader(),
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    if (error.code === "REANALYSIS_COOLDOWN") {
+      throw Object.assign(new Error(`Re-analysis available in ${error.days_remaining} days`), {
+        code: "REANALYSIS_COOLDOWN",
+        days_remaining: error.days_remaining,
+      });
+    }
+    if (res.status === 429 && error.retry_after) {
+      throw Object.assign(new Error("Rate limit exceeded"), { retry_after: error.retry_after });
+    }
+    throw new Error(error.detail || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Fetch personalized digest with match percentages.
+ */
+export async function fetchDigest(params?: {
+  skip?: number;
+  limit?: number;
+}): Promise<{
+  data: Array<{
+    id: string;
+    headline: string;
+    source: string;
+    summary: string;
+    category: string;
+    readTime: string;
+    score: number;
+    match_percentage: number;
+    featured: boolean;
+  }>;
+  meta: { total: number; skip: number; limit: number; has_more: boolean };
+}> {
+  const searchParams = new URLSearchParams();
+  if (params?.skip !== undefined) searchParams.set("skip", String(params.skip));
+  if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
+
+  const qs = searchParams.toString();
+  const url = `${API_BASE}/api/digest${qs ? `?${qs}` : ""}`;
+
+  const res = await fetch(url, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+    next: { revalidate: 300 },
+  });
+
+  if (!res.ok) throw new Error(`Failed to fetch digest: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Fetch user profile from backend.
+ */
+export async function fetchProfile(): Promise<{
+  id: string;
+  name: string;
+  email: string;
+  roles: string[];
+  experience_level: string;
+  resume_text: string | null;
+  ats_score: number | null;
+  ats_critical_issues: string[];
+  ats_missing_keywords: string[];
+  ats_suggested_additions: string[];
+  last_analysis_at: string | null;
+  preferences: Record<string, unknown>;
+}> {
+  const res = await fetch(`${API_BASE}/api/profile`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Update user profile on backend.
+ */
+export async function updateProfile(data: {
+  name?: string;
+  email?: string;
+  roles?: string[];
+  experience_level?: string;
+  preferences?: Record<string, unknown>;
+}): Promise<{ id: string }> {
+  const res = await fetch(`${API_BASE}/api/profile`, {
+    method: "POST",
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to update profile: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Fetch market observation from trends API.
+ */
+export async function fetchObservation(): Promise<{
+  text: string;
+  generated_at: string | null;
+  fallback: boolean;
+}> {
+  const res = await fetch(`${API_BASE}/api/observation`, {
+    headers: { "Content-Type": "application/json" },
+    next: { revalidate: 3600 },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch observation: ${res.status}`);
+  return res.json();
 }

@@ -329,6 +329,24 @@ async def summarize_top_news(top_n: int = 20) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def generate_with_retry(prompt: str, system_instruction: str | None = None) -> str:
+    """
+    General-purpose Gemini call with retry.
+    Use this from other services (resume, etc.) instead of raw _call_gemini.
+
+    Args:
+        prompt: User prompt text.
+        system_instruction: Optional system instruction.
+
+    Returns:
+        Gemini response text.
+    """
+    if system_instruction:
+        return await _call_gemini(system_instruction, prompt)
+    else:
+        return await _call_gemini("", prompt)
+
+
 async def generate_observation_text(
     booming_keywords: list[str],
     declining_keywords: list[str],

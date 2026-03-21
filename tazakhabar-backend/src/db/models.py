@@ -78,6 +78,11 @@ class User(Base):
     experience_level: Mapped[str] = mapped_column(String(10), default="I")
     resume_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     resume_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ats_critical_issues: Mapped[list[str]] = mapped_column(JSON, default=list)
+    ats_missing_keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    ats_suggested_additions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    last_analysis_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     preferences: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

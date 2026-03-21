@@ -1,7 +1,7 @@
 """
 Pydantic request/response models for TazaKhabar API.
 """
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -89,3 +89,37 @@ class ObservationResponse(BaseModel):
     text: str
     generated_at: str | None = None
     fallback: bool = False
+
+
+class ResumeAnalyseResponse(BaseModel):
+    """Response from resume analysis endpoint."""
+    ats_score: int
+    critical_issues: list[str] = Field(default_factory=list)
+    missing_keywords: list[str] = Field(default_factory=list)
+    suggested_additions: list[str] = Field(default_factory=list)
+    resume_text_length: int = 0
+
+
+class ProfileResponse(BaseModel):
+    """User profile response with ATS data."""
+    id: str | None = None
+    name: str | None = None
+    email: str | None = None
+    roles: list[str] = Field(default_factory=list)
+    experience_level: str = "I"
+    ats_score: int | None = None
+    ats_critical_issues: list[str] = Field(default_factory=list)
+    ats_missing_keywords: list[str] = Field(default_factory=list)
+    ats_suggested_additions: list[str] = Field(default_factory=list)
+    last_analysis_at: str | None = None
+    resume_text_length: int | None = None
+    preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfileUpdateRequest(BaseModel):
+    """Request to update user profile."""
+    name: str | None = None
+    email: str | None = None
+    roles: list[str] = Field(default_factory=list)
+    experience_level: str = "I"
+    preferences: dict[str, Any] = Field(default_factory=dict)

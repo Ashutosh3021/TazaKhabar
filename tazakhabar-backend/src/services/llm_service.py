@@ -76,13 +76,18 @@ def get_client() -> Client:
 def _verify_model(client: Client) -> str:
     """
     Verify which Gemini model is available.
-    Tries models in order of preference and returns the first that works.
+    Tries models in order of preference and returns the first that responds with HTTP 200.
+    Returns immediately on the first successful API call — does NOT check response.text,
+    since some models return empty text for minimal prompts but are fully functional.
     """
     models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
 
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
+            # A successful HTTP 200 means the model is available.
+            # Do NOT check response.text — empty text is fine, it just means the
+            # model processed the request without producing output for "Hi".
+            client.models.generate_content(
                 model=model_name,
                 contents="Hi",
                 config=types.GenerateContentConfig(
@@ -90,9 +95,9 @@ def _verify_model(client: Client) -> str:
                     max_output_tokens=10,
                 ),
             )
-            if response.text:
-                logger.info(f"Verified Gemini model: {model_name}")
-                return model_name
+            # HTTP 200 reached — model is available
+            logger.info(f"Verified Gemini model: {model_name}")
+            return model_name
         except Exception as e:
             logger.warning(f"Model {model_name} not available: {e}")
             continue

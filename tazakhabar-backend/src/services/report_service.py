@@ -182,7 +182,7 @@ async def swap_reports(session: AsyncSession) -> dict:
         session.add(report)
         await session.commit()
 
-        logger.info("Report swap completed: Report 2 → Report 1")
+        logger.info("Report swap completed: Report 2 -> Report 1")
 
         # Step 4: Return with zero counts (FRESH-05: badge resets)
         return {

@@ -120,9 +120,10 @@ class WhoIsHiringScraper(BaseScraper):
             
             # Extract tags from text
             tags = []
-            keywords = ["senior", "junior", "intern", "contract", "full-time", 
+            keywords = ["senior", "junior", "intern", "contract", "full-time",
                        "part-time", "entry", "mid", "lead", "principal", "staff",
-                       "frontend", "backend", "fullstack", "devops", "data", "ml", "ai"]
+                       "frontend", "backend", "fullstack", "devops", "data", "ml", "ai",
+                       "react", "python", "go", "rust", "java"]
             for keyword in keywords:
                 if keyword in text_lower:
                     tags.append(keyword)

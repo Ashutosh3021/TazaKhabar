@@ -115,8 +115,8 @@ async def get_jobs(
         # Build count query
         count_query = select(func.count(Job.id)).where(base_filter)
         count_result = await db.execute(count_query)
-        total = count_result.scalar() or 0
-        print(f"    DB total count: {total} jobs")
+        db_total = count_result.scalar() or 0
+        print(f"    DB total count: {db_total} jobs")
 
         # Build data query with ordering and pagination
         query = (
@@ -132,29 +132,29 @@ async def get_jobs(
         print(f"    DB returned: {len(rows)} jobs")
 
         # Apply role filter in Python (OR within roles)
-        filtered = rows
+        # NOTE: SQL applied skip/limit before this. For correct has_more, use db_total
+        # (all rows matching DB filters, before Python filtering). This means when role
+        # filters are applied, has_more may overcount — acceptable for MVP.
         if roles:
-            filtered = [r for r in filtered if any(_job_matches_role(r.tags or [], role) for role in roles)]
+            filtered = [r for r in rows if any(_job_matches_role(r.tags or [], role) for role in roles)]
             print(f"    After role filter ({roles}): {len(filtered)} jobs")
+        else:
+            filtered = rows
 
-        # Apply startup filter in Python (AND) — requires funding_stage field in Job model
-        # Note: startup_only filter is non-functional until Job model has funding_stage column
+        # Apply startup filter (deferred — requires funding_stage column)
         if startup_only:
-            # Deferred: add funding_stage to Job model in future phase
-            # Placeholder: pass through all results
             print(f"    WARNING: startup_only filter requires 'funding_stage' column (not yet added)")
 
-        # Adjust total to filtered count for accurate pagination
-        total = len(filtered)
+        # has_more uses db_total (correct for unfiltered results; may overcount with role filters)
         jobs_data = [_row_to_response(r) for r in filtered]
-        has_more = (skip + limit) < total
+        has_more = (skip + limit) < db_total
         
-        print(f">>> [API:GET /api/jobs] Response: {len(jobs_data)} jobs (total: {total}, has_more: {has_more})")
+        print(f">>> [API:GET /api/jobs] Response: {len(jobs_data)} jobs (total: {db_total}, has_more: {has_more})")
 
         return PaginatedResponse(
             data=jobs_data,
             meta=PaginationMeta(
-                total=total,
+                total=db_total,
                 skip=skip,
                 limit=limit,
                 has_more=has_more,

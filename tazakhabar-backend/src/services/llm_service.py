@@ -1,16 +1,16 @@
 """
-LLM service for TazaKhabar using Google Gemini.
+LLM service for TazaKhabar using OpenRouter.
 Handles news summarization, rate limiting, and market observation generation.
+Uses free OpenRouter models: nvidia/nemotron-3-super-120b-a12b:free (primary),
+z-ai/glm-4.5-air:free (fallback).
 """
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 
+import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
-
-from google import genai
-from google.genai import Client
-from google.genai import types
 from sqlalchemy import select
 
 from src.config import settings
@@ -22,13 +22,27 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Module-level state
 # ---------------------------------------------------------------------------
-_client: Client | None = None
 _verified_model: str | None = None
+
+# ---------------------------------------------------------------------------
+# OpenRouter configuration
+# ---------------------------------------------------------------------------
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_API_KEY = settings.OPENROUTER_API_KEY
+
+# Models to try in order of preference
+MODELS_TO_TRY = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "z-ai/glm-4.5-air:free",
+]
 
 # ---------------------------------------------------------------------------
 # Rate limiting constants
 # ---------------------------------------------------------------------------
 DAILY_LIMITS = {"anonymous": 5, "registered": 20}
+MAX_RETRIES = 2
+RETRY_WAIT_MIN = 30  # seconds
+RETRY_WAIT_MAX = 60  # seconds
 
 # ---------------------------------------------------------------------------
 # System prompts
@@ -57,59 +71,50 @@ Declining: {declining}
 Observation:"""
 
 # ---------------------------------------------------------------------------
-# Gemini client helpers
+# OpenRouter client helpers
 # ---------------------------------------------------------------------------
 
 
-def get_client() -> Client:
+def _verify_model() -> str:
     """
-    Get or create the singleton Gemini client.
-    Loaded once at startup from GEMINI_API_KEY.
+    Verify which OpenRouter model is available.
+    Tries models in order of preference and returns the first that responds successfully.
     """
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        logger.info(f"Gemini client initialized with API key: {settings.GEMINI_API_KEY[:8]}...")
-    return _client
-
-
-def _verify_model(client: Client) -> str:
-    """
-    Verify which Gemini model is available.
-    Tries models in order of preference and returns the first that responds with HTTP 200.
-    Returns immediately on the first successful API call — does NOT check response.text,
-    since some models return empty text for minimal prompts but are fully functional.
-    """
-    models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
-
-    for model_name in models_to_try:
+    for model_name in MODELS_TO_TRY:
         try:
-            # A successful HTTP 200 means the model is available.
-            # Do NOT check response.text — empty text is fine, it just means the
-            # model processed the request without producing output for "Hi".
-            client.models.generate_content(
-                model=model_name,
-                contents="Hi",
-                config=types.GenerateContentConfig(
-                    system_instruction=SUMMARIZATION_SYSTEM,
-                    max_output_tokens=10,
-                ),
+            # Test call with minimal prompt
+            response = httpx.post(
+                OPENROUTER_API_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://tazakhabar.vercel.app",
+                    "X-Title": "TazaKhabar",
+                },
+                json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "max_tokens": 10,
+                },
+                timeout=30.0,
             )
-            # HTTP 200 reached — model is available
-            logger.info(f"Verified Gemini model: {model_name}")
-            return model_name
+            if response.status_code == 200:
+                logger.info(f"Verified OpenRouter model: {model_name}")
+                return model_name
+            else:
+                logger.warning(f"Model {model_name} returned {response.status_code}: {response.text[:200]}")
         except Exception as e:
             logger.warning(f"Model {model_name} not available: {e}")
             continue
 
-    raise RuntimeError("No working Gemini model found (tried: gemini-2.0-flash, gemini-2.5-flash, gemini-1.5-flash)")
+    raise RuntimeError(f"No working OpenRouter model found. Tried: {MODELS_TO_TRY}")
 
 
 def get_verified_model() -> str:
     """Get the verified model name, lazily checking on first call."""
     global _verified_model
     if _verified_model is None:
-        _verified_model = _verify_model(get_client())
+        _verified_model = _verify_model()
     return _verified_model
 
 
@@ -119,43 +124,74 @@ def get_verified_model() -> str:
 
 
 def _is_retryable_error(exc: Exception) -> bool:
-    """Return True if the error looks like a rate-limit or resource-exhausted error."""
+    """Return True if the error looks like a rate-limit or quota error."""
     msg = str(exc).lower()
-    return any(kw in msg for kw in ["429", "resource_exhausted", "rate limit", "quota"])
+    return any(kw in msg for kw in ["429", "rate limit", "quota", "overloaded", "503"])
+
+
+async def _call_openrouter(system_instruction: str, prompt: str) -> str:
+    """
+    Call OpenRouter with tenacity retry on 429/quota errors.
+    """
+    model = get_verified_model()
+    
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://tazakhabar.vercel.app",
+        "X-Title": "TazaKhabar",
+    }
+    
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": 500,
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                OPENROUTER_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=60.0,
+            )
+            
+            if response.status_code != 200:
+                error_msg = f"OpenRouter API error: {response.status_code} - {response.text[:200]}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            data = response.json()
+            # OpenRouter response format
+            return data["choices"][0]["message"]["content"] or ""
+            
+        except Exception as exc:
+            if _is_retryable_error(exc):
+                logger.warning(f"OpenRouter rate limit/quota, will retry: {exc}")
+                raise
+            raise
 
 
 @retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(multiplier=1, min=30, max=60),
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=1, min=RETRY_WAIT_MIN, max=RETRY_WAIT_MAX),
     reraise=True,
-    after=lambda state: logger.warning(f"Retry {state.attempt_number} after 30s..."),
+    after=lambda state: logger.warning(f"Retry {state.attempt_number} after {RETRY_WAIT_MIN}s..."),
 )
-async def _call_gemini(system_instruction: str, prompt: str) -> str:
+async def _call_llm(system_instruction: str, prompt: str) -> str:
     """
-    Call Gemini with tenacity retry on 429/resouce-exhausted errors.
+    Call LLM with tenacity retry on rate limit errors.
+    
+    Note: Tenacity handles asyncio.sleep internally for exponential backoff
+    between retry attempts (RETRY_WAIT_MIN to RETRY_WAIT_MAX seconds).
     """
-    loop = asyncio.get_event_loop()
-    model = get_verified_model()
-    client = get_client()
-
-    def _sync_call():
-        return client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                max_output_tokens=500,
-            ),
-        )
-
-    try:
-        response = await loop.run_in_executor(None, _sync_call)
-        return response.text or ""
-    except Exception as exc:
-        if _is_retryable_error(exc):
-            logger.warning(f"Gemini 429/resource-exhausted, will retry: {exc}")
-            raise
-        raise
+    return await _call_openrouter(system_instruction, prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -190,8 +226,6 @@ async def check_rate_limit(user_id: str | None) -> tuple[bool, int]:
         if record.request_count >= limit:
             # Calculate seconds until midnight UTC
             now = datetime.utcnow()
-            midnight = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
-            # Actually calculate midnight properly
             tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             retry_after = int((tomorrow - now).total_seconds())
             logger.info(f"Rate limit exceeded for user={user_id}: {record.request_count}/{limit}, retry_after={retry_after}s")
@@ -253,7 +287,7 @@ async def check_and_increment(user_id: str | None) -> tuple[bool, int]:
 
 async def summarize_news_item(news_item_id: str) -> str | None:
     """
-    Summarize a single news item using Gemini.
+    Summarize a single news item using OpenRouter LLM.
 
     Returns:
         The summary text, or None if already summarized or error.
@@ -277,7 +311,7 @@ async def summarize_news_item(news_item_id: str) -> str | None:
                 url=news.url or "N/A",
                 score=news.score,
             )
-            summary = await _call_gemini(SUMMARIZATION_SYSTEM, prompt)
+            summary = await _call_llm(SUMMARIZATION_SYSTEM, prompt)
             summary = summary.strip()
 
             # Save summary to DB
@@ -336,20 +370,20 @@ async def summarize_top_news(top_n: int = 20) -> None:
 
 async def generate_with_retry(prompt: str, system_instruction: str | None = None) -> str:
     """
-    General-purpose Gemini call with retry.
-    Use this from other services (resume, etc.) instead of raw _call_gemini.
+    General-purpose LLM call with retry.
+    Use this from other services (resume, etc.) instead of raw _call_llm.
 
     Args:
         prompt: User prompt text.
         system_instruction: Optional system instruction.
 
     Returns:
-        Gemini response text.
+        LLM response text.
     """
     if system_instruction:
-        return await _call_gemini(system_instruction, prompt)
+        return await _call_llm(system_instruction, prompt)
     else:
-        return await _call_gemini("", prompt)
+        return await _call_llm("", prompt)
 
 
 async def generate_observation_text(
@@ -372,7 +406,7 @@ async def generate_observation_text(
     )
 
     try:
-        text = await _call_gemini(OBSERVATION_SYSTEM, prompt)
+        text = await _call_llm(OBSERVATION_SYSTEM, prompt)
         logger.info(f"Generated observation: {text[:80]}...")
         return text.strip()
     except Exception as e:
@@ -383,4 +417,4 @@ async def generate_observation_text(
 # ---------------------------------------------------------------------------
 # Module initialization print
 # ---------------------------------------------------------------------------
-print("[OK] llm_service.py loaded — Gemini client, retry, rate limiting, summarization ready")
+print("[OK] llm_service.py loaded — OpenRouter client, retry, rate limiting, summarization ready")

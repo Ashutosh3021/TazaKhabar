@@ -15,6 +15,12 @@ from src.db.models import Embedding
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+EMBEDDING_DIM = 384  # all-MiniLM-L6-v2 produces 384-dimensional embeddings
+EXPECTED_BYTES = EMBEDDING_DIM * 4  # 4 bytes per float32 = 1536 bytes
+
+# ---------------------------------------------------------------------------
 # Model loading
 # ---------------------------------------------------------------------------
 
@@ -44,10 +50,17 @@ def generate_text_embedding(text: str) -> bytes:
     Generate embedding for text and return as bytes for BLOB storage.
 
     Uses unit-normalized output — dot product = cosine similarity.
+    Validates output is exactly 1536 bytes (384 dims * 4 bytes).
     """
     model = get_embedding_model()
     embedding = model.encode(text, normalize_embeddings=True)
-    return embedding.astype(np.float32).tobytes()
+    embedding_bytes = embedding.astype(np.float32).tobytes()
+    
+    # Validate embedding size
+    if len(embedding_bytes) != EXPECTED_BYTES:
+        raise ValueError(f"Embedding size mismatch: expected {EXPECTED_BYTES} bytes, got {len(embedding_bytes)}")
+    
+    return embedding_bytes
 
 
 def generate_content_embedding(item_type: str, item_id: str, text: str) -> bytes:

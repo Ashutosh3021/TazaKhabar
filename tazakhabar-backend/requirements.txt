@@ -14,5 +14,6 @@ pydantic-settings==2.3.0
 python-multipart==0.0.9
 tenacity==8.2.3
 google-genai==1.67.0
+openrouter==0.3.2
 sentence-transformers==5.2.3
 pymupdf==1.26.7

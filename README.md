@@ -11,7 +11,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-black?style=for-the-badge&logo=sqlite)
 ![Supabase](https://img.shields.io/badge/Supabase-black?style=for-the-badge&logo=supabase)
 ![Stripe](https://img.shields.io/badge/Stripe-black?style=for-the-badge&logo=stripe)
-![Gemini](https://img.shields.io/badge/Gemini_1.5_Flash-black?style=for-the-badge&logo=google)
+![NVIDIA Nemotron](https://img.shields.io/badge/Nemotron_3_Super_120B-black?style=for-the-badge&logo=nvidia)
 ![Railway](https://img.shields.io/badge/Railway-black?style=for-the-badge&logo=railway)
 ![Vercel](https://img.shields.io/badge/Vercel-black?style=for-the-badge&logo=vercel)
 
@@ -697,12 +697,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | Badge counter + 5-min polling | DONE | `/api/badge` + TopNav polling |
 | Railway deployment ready | DONE | Dockerfile + railway.json |
 | CORS, logging, health check | DONE | All endpoints verified |
-| Gemini LLM integration | DONE | `gemini-2.0-flash` auto-selected, Tenacity retry, rate limiting |
+| OpenRouter LLM integration | DONE | `nvidia/nemotron-3-super-120b-a12b:free` + fallback, Tenacity retry, rate limiting |
 | News summarization | DONE | Top 20 by score, 2-3 sentences, fire-and-forget |
 | Market observation generation | DONE | Daily at midnight, booming/declining keywords, `/api/observation` |
 | PDF resume parsing | DONE | PyMuPDF, PDF + TXT, 5MB limit |
 | ATS scoring | DONE | 0-100 score, top 3 critical fixes, missing keywords |
-| Suggested additions | DONE | Gemini generates from resume + roles + trending keywords |
+| Suggested additions | DONE | OpenRouter LLM generates from resume + roles + trending keywords |
 | RAG personalization | DONE | sentence-transformers all-MiniLM-L6-v2, cosine similarity |
 | Personalized digest | DONE | Blended scoring, 5 items/page, `/api/digest` |
 | Frontend — all pages wired | DONE | Profile, digest, trends, jobs connected to Phase 2 APIs |

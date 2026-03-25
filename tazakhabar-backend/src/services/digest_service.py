@@ -49,6 +49,8 @@ async def get_personalized_digest(
     Blends top-scored + personalized via weighted scoring.
     Only returns news items with AI summaries (News.summary != None).
 
+    Fallback for anonymous users: If no embedded news exist, returns summarized news by score.
+
     Returns:
         (items: list[dict], total_count: int)
     """
@@ -79,21 +81,42 @@ async def get_personalized_digest(
 
         logger.info(f"[DIGEST] Found {len(news_rows)} summarized news items with embeddings")
 
-        # 3. Compute blended scores
-        scored_items = []
-        for emb, news in news_rows:
-            if user_emb:
-                sim = cosine_similarity_bytes(user_emb.embedding, emb.embedding)
-                match_pct = normalize_similarity(sim)
-                # Blend: 40% score rank + 60% similarity rank
-                score_rank = news.score
-                blended = float(score_rank) * 0.4 + float(sim) * 0.6
-            else:
-                match_pct = 0
-                sim = 0.0
-                blended = float(news.score)
+        # Fallback for anonymous users: If no embedded news exist, get summarized news by score
+        if not news_rows:
+            fallback_stmt = (
+                select(News)
+                .where(
+                    News.report_version == "1",
+                    News.summary != None,
+                )
+                .order_by(News.score.desc())
+            )
+            fallback_result = await session.execute(fallback_stmt)
+            fallback_news = fallback_result.scalars().all()
+            
+            logger.info(f"[DIGEST] No embeddings found, using fallback: {len(fallback_news)} summarized items")
+            
+            scored_items = []
+            for news in fallback_news:
+                # Anonymous users get 0 match percentage
+                scored_items.append((news, 0, float(news.score)))
+        else:
+            # 3. Compute blended scores
+            scored_items = []
+            for emb, news in news_rows:
+                if user_emb:
+                    sim = cosine_similarity_bytes(user_emb.embedding, emb.embedding)
+                    match_pct = normalize_similarity(sim)
+                    # Blend: 40% score rank + 60% similarity rank
+                    score_rank = news.score
+                    blended = float(score_rank) * 0.4 + float(sim) * 0.6
+                else:
+                    # Fallback for anonymous: use score only
+                    match_pct = 0
+                    sim = 0.0
+                    blended = float(news.score)
 
-            scored_items.append((news, match_pct, blended))
+                scored_items.append((news, match_pct, blended))
 
         # 4. Sort by blended score, apply pagination
         scored_items.sort(key=lambda x: x[2], reverse=True)

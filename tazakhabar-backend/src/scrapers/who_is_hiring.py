@@ -6,6 +6,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Any
+from html import unescape
 
 from ..db.database import async_session
 from ..db.models import Report
@@ -25,14 +26,14 @@ class WhoIsHiringScraper(BaseScraper):
     
     def __init__(self):
         self.client = HNClient()
-        self._last_thread_id_file = "tazakhabar-backend/.last_wih_thread"
+        self._last_thread_id_file = ".last_wih_thread"
     
     def _get_last_thread_id(self) -> int | None:
         """Get the last processed Who Is Hiring thread ID."""
         try:
             with open(self._last_thread_id_file, "r") as f:
                 return int(f.read().strip())
-        except (FileNotFoundError, ValueError):
+        except (FileNotFoundError, ValueError, IOError):
             return None
     
     def _set_last_thread_id(self, thread_id: int) -> None:
@@ -80,7 +81,9 @@ class WhoIsHiringScraper(BaseScraper):
             Job dict with extracted data, or None if parsing fails.
         """
         try:
-            text = comment.get("text", "") or ""
+            # Unescape HTML entities (HN returns HTML-encoded text)
+            raw_text = comment.get("text", "") or ""
+            text = unescape(raw_text)
             author = comment.get("author", "")
             
             if not text.strip():
@@ -94,26 +97,27 @@ class WhoIsHiringScraper(BaseScraper):
             if bold_match:
                 company = bold_match.group(1).strip()
             
-            # Extract title/role
-            lines = text.split("\n")
+            # Extract title/role - look for the actual job title
+            lines = [l.strip() for l in text.split("\n") if l.strip()]
             title = "Unknown Position"
             
+            # Skip the first few lines (company, empty, etc.)
             for i, line in enumerate(lines):
-                line = line.strip()
-                # Skip empty lines and bold text
-                if not line or line.startswith("**"):
+                # Skip bold lines and very short lines
+                if line.startswith("**") or len(line) < 5:
                     continue
-                # First non-bold line after possible bold is likely the title
-                if i > 0:
-                    title = line
-                    break
+                # Skip lines that look like URLs
+                if line.startswith("http") or "http" in line:
+                    continue
+                title = line
+                break
             
             # Extract location
             location = "N/A"
             text_lower = text.lower()
             if "remote" in text_lower:
                 location = "Remote"
-            elif "onsite" in text_lower or "in-person" in text_lower:
+            elif "onsite" in text_lower or "in-person" in text_lower or "in person" in text_lower:
                 location = "Onsite"
             elif "hybrid" in text_lower:
                 location = "Hybrid"
@@ -122,10 +126,12 @@ class WhoIsHiringScraper(BaseScraper):
             tags = []
             keywords = ["senior", "junior", "intern", "contract", "full-time",
                        "part-time", "entry", "mid", "lead", "principal", "staff",
-                       "frontend", "backend", "fullstack", "devops", "data", "ml", "ai",
-                       "react", "python", "go", "rust", "java"]
+                       "frontend", "front-end", "backend", "back-end", "fullstack", "full-stack", "devops", "data", "ml", "ai",
+                       "react", "python", "go", "rust", "java", "typescript", "node", "postgresql", "aws", "gcp", "azure",
+                       "machine learning", "nlp", "llm", "gpt", "tensorflow", "pytorch"]
+            text_lower_kw = text.lower()
             for keyword in keywords:
-                if keyword in text_lower:
+                if keyword in text_lower_kw:
                     tags.append(keyword)
             
             # Extract email contact
@@ -163,7 +169,7 @@ class WhoIsHiringScraper(BaseScraper):
                 deadline = deadline_match.group(1)
             
             # Get HN item ID
-            hn_item_id = comment.get("id") or comment.get("objectID")
+            hn_item_id = comment.get("id")
             
             return {
                 "hn_item_id": int(hn_item_id) if hn_item_id else 0,
@@ -204,7 +210,7 @@ class WhoIsHiringScraper(BaseScraper):
                 status="running",
             )
             session.add(report)
-            await session.flush()
+            await session.commit()
             report_id = report.id
         
         try:
@@ -234,10 +240,27 @@ class WhoIsHiringScraper(BaseScraper):
             else:
                 print(f">>> [WIH-SCRAPER] New thread detected! Last: {last_thread_id}, Current: {thread_id}")
             
-            # Fetch comments via Algolia
-            print(f">>> [WIH-SCRAPER] Step 2: Fetching comments from thread {thread_id} via Algolia...")
-            comments = await self.client.fetch_algolia_comments(str(thread_id))
-            print(f">>> [WIH-SCRAPER] Fetched {len(comments)} comments")
+            # Fetch comments via Firebase API
+            print(f">>> [WIH-SCRAPER] Step 2: Fetching comments for thread {thread_id} via Firebase...")
+            
+            # First get the story to find kids (comment IDs)
+            story = await self.client.fetch_item(int(thread_id))
+            if not story:
+                print(f">>> [WIH-SCRAPER] ERROR: Could not fetch story {thread_id}")
+                return {"collected": 0, "new": 0}
+            
+            # Get comment IDs from story's kids
+            comment_ids = story.get("kids", [])[:100]  # Limit to first 100 comments
+            print(f">>> [WIH-SCRAPER] Found {len(comment_ids)} comment IDs in story")
+            
+            # Fetch all comments in parallel
+            if comment_ids:
+                comments = await self.client.fetch_items_batch(comment_ids, semaphore=5)
+                comments = [c for c in comments if c and c.get("text")]  # Filter out deleted/null
+                print(f">>> [WIH-SCRAPER] Fetched {len(comments)} valid comments")
+            else:
+                comments = []
+                print(f">>> [WIH-SCRAPER] No comments found in story")
             
             # Parse comments into jobs
             print(f">>> [WIH-SCRAPER] Step 3: Parsing {len(comments)} comments into job listings...")
@@ -248,13 +271,6 @@ class WhoIsHiringScraper(BaseScraper):
                     job = self.parse_comment(comment)
                     if job:
                         jobs.append(job)
-                        # Also check first nested reply (children[0])
-                        children = comment.get("children", [])
-                        if children and isinstance(children, list):
-                            nested_reply = children[0]
-                            nested_job = self.parse_comment(nested_reply)
-                            if nested_job:
-                                jobs.append(nested_job)
                 except Exception as e:
                     parse_errors += 1
             
@@ -288,11 +304,14 @@ class WhoIsHiringScraper(BaseScraper):
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
                 result = await session.execute(stmt)
-                report = result.scalar_one()
-                report.items_collected = total
-                report.new_items = new_count
-                report.status = "completed"
-                await session.commit()
+                report = result.scalar_one_or_none()
+                if report:
+                    report.items_collected = total
+                    report.new_items = new_count
+                    report.status = "completed"
+                    await session.commit()
+                else:
+                    logger.warning(f"Could not find report {report_id} to update")
             
             print(f">>> [WIH-SCRAPER] SUCCESS: {new_count} new jobs saved!")
             print(">>> [WIH-SCRAPER] Scraper run completed successfully")
@@ -311,8 +330,11 @@ class WhoIsHiringScraper(BaseScraper):
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
                 result = await session.execute(stmt)
-                report = result.scalar_one()
-                report.status = "failed"
-                await session.commit()
+                report = result.scalar_one_or_none()
+                if report:
+                    report.status = "failed"
+                    await session.commit()
+                else:
+                    logger.warning(f"Could not find report {report_id} to update status to failed")
             
             return {"collected": 0, "new": 0}

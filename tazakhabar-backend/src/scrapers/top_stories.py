@@ -85,11 +85,14 @@ class TopStoriesScraper(BaseScraper):
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
                 result = await session.execute(stmt)
-                report = result.scalar_one()
-                report.items_collected = total
-                report.new_items = new_count
-                report.status = "completed"
-                await session.commit()
+                report = result.scalar_one_or_none()
+                if report:
+                    report.items_collected = total
+                    report.new_items = new_count
+                    report.status = "completed"
+                    await session.commit()
+                else:
+                    logger.warning(f"Could not find report {report_id} to update")
             
             print(">>> [TOP-STORIES] Scraper run completed successfully")
             print("-" * 50 + "\n")

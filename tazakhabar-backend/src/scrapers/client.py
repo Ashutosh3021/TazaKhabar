@@ -232,11 +232,11 @@ class HNClient:
         url = f"{BASE_URL_ALGOLIA}/search"
         params = {
             "query": "",
-            "tags": f"comment_{objectID}",
+            "tags": f"story_{objectID}",
             "hitsPerPage": 100,
         }
         
-        logger.info(f"Fetching Algolia comments for objectID={objectID}")
+        logger.info(f"Fetching Algolia comments for story_{objectID}")
         
         client = await self._get_client()
         

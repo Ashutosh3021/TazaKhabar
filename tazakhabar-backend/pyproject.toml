@@ -2,7 +2,7 @@
 name = "tazakhabar-backend"
 version = "1.0.0"
 description = "Backend API for TazaKhabar news scraping service"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi==0.109.2",
     "uvicorn[standard]==0.27.1",

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///./tazakhabar-backend/tazakhabar.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./tazakhabar.db"
     OPENROUTER_API_KEY: str = "your_key_here"
     ALLOWED_ORIGINS: str = "http://localhost:3000,https://tazakhabar.vercel.app,https://*.vercel.app"
     LOG_LEVEL: str = "INFO"

@@ -114,6 +114,11 @@ async def create_all_tables() -> None:
     logger.info("All database tables and columns are up to date")
 
 
+async def init_db() -> None:
+    """Alias for create_all_tables."""
+    await create_all_tables()
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency for database sessions."""
     async with async_session() as session:

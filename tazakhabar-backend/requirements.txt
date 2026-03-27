@@ -15,5 +15,6 @@ python-multipart==0.0.9
 tenacity==8.2.3
 google-genai==1.67.0
 openrouter==0.7.11
+groq==0.14.0
 sentence-transformers==5.2.3
 pymupdf==1.26.7

@@ -1,15 +1,16 @@
 """
-LLM service for TazaKhabar using OpenRouter.
+LLM service for TazaKhabar using OpenRouter and Groq.
 Handles news summarization, rate limiting, and market observation generation.
-Uses free OpenRouter models: nvidia/nemotron-3-super-120b-a12b:free (primary),
-z-ai/glm-4.5-air:free (fallback).
+Uses Groq with openai/gpt-oss-120b model (primary), falls back to OpenRouter free models.
 """
+
 import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
 
 import httpx
+from groq import Groq as GroqClient
 from tenacity import retry, stop_after_attempt, wait_exponential
 from sqlalchemy import select
 
@@ -37,19 +38,33 @@ MODELS_TO_TRY = [
 ]
 
 # ---------------------------------------------------------------------------
+# Groq configuration
+# ---------------------------------------------------------------------------
+GROQ_API_KEY = settings.GROQ_API_KEY
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+_groq_client: GroqClient | None = None
+
+
+def _get_groq_client() -> GroqClient:
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = GroqClient(api_key=GROQ_API_KEY)
+    return _groq_client
+
+
+# ---------------------------------------------------------------------------
 # Rate limiting constants
 # ---------------------------------------------------------------------------
 DAILY_LIMITS = {"anonymous": 5, "registered": 20}
-MAX_RETRIES = 2
-RETRY_WAIT_MIN = 30  # seconds
-RETRY_WAIT_MAX = 60  # seconds
+MAX_RETRIES = 4
+RETRY_WAIT_MIN = 60  # seconds (increased for quota exhaustion)
+RETRY_WAIT_MAX = 180  # seconds (longer wait for daily quota reset)
 
 # ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------
-SUMMARIZATION_SYSTEM = (
-    "You are a tech job market analyst. Write 2-3 sentence summaries focused on job market impact. Be direct and factual."
-)
+SUMMARIZATION_SYSTEM = "You are a tech job market analyst. Write 2-3 sentence summaries focused on job market impact. Be direct and factual."
 
 SUMMARIZATION_PROMPT = """Summarize this HN post for tech workers. Focus on job market impact. Keep to 2-3 sentences. Return ONLY the summary text.
 
@@ -102,7 +117,9 @@ def _verify_model() -> str:
                 logger.info(f"Verified OpenRouter model: {model_name}")
                 return model_name
             else:
-                logger.warning(f"Model {model_name} returned {response.status_code}: {response.text[:200]}")
+                logger.warning(
+                    f"Model {model_name} returned {response.status_code}: {response.text[:200]}"
+                )
         except Exception as e:
             logger.warning(f"Model {model_name} not available: {e}")
             continue
@@ -126,7 +143,31 @@ def get_verified_model() -> str:
 def _is_retryable_error(exc: Exception) -> bool:
     """Return True if the error looks like a rate-limit or quota error."""
     msg = str(exc).lower()
-    return any(kw in msg for kw in ["429", "rate limit", "quota", "overloaded", "503"])
+    return any(
+        kw in msg for kw in ["429", "rate limit", "quota", "overloaded", "503", "insufficient"]
+    )
+
+
+async def _call_groq(system_instruction: str, prompt: str) -> str:
+    """
+    Call Groq API with openai/gpt-oss-120b model.
+    Non-streaming for simplicity.
+    """
+    client = _get_groq_client()
+
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL, messages=messages, temperature=1, max_tokens=500, top_p=1, stop=None
+        )
+        return completion.choices[0].message.content or ""
+    except Exception as exc:
+        logger.warning(f"Groq API error: {exc}")
+        raise
 
 
 async def _call_openrouter(system_instruction: str, prompt: str) -> str:
@@ -134,25 +175,25 @@ async def _call_openrouter(system_instruction: str, prompt: str) -> str:
     Call OpenRouter with tenacity retry on 429/quota errors.
     """
     model = get_verified_model()
-    
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://tazakhabar.vercel.app",
         "X-Title": "TazaKhabar",
     }
-    
+
     messages = []
     if system_instruction:
         messages.append({"role": "system", "content": system_instruction})
     messages.append({"role": "user", "content": prompt})
-    
+
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": 500,
     }
-    
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
@@ -161,16 +202,16 @@ async def _call_openrouter(system_instruction: str, prompt: str) -> str:
                 json=payload,
                 timeout=60.0,
             )
-            
+
             if response.status_code != 200:
                 error_msg = f"OpenRouter API error: {response.status_code} - {response.text[:200]}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
-            
+
             data = response.json()
             # OpenRouter response format
             return data["choices"][0]["message"]["content"] or ""
-            
+
         except Exception as exc:
             if _is_retryable_error(exc):
                 logger.warning(f"OpenRouter rate limit/quota, will retry: {exc}")
@@ -186,12 +227,18 @@ async def _call_openrouter(system_instruction: str, prompt: str) -> str:
 )
 async def _call_llm(system_instruction: str, prompt: str) -> str:
     """
-    Call LLM with tenacity retry on rate limit errors.
-    
+    Call LLM with fallback: try Groq first, then OpenRouter.
+
     Note: Tenacity handles asyncio.sleep internally for exponential backoff
     between retry attempts (RETRY_WAIT_MIN to RETRY_WAIT_MAX seconds).
     """
-    return await _call_openrouter(system_instruction, prompt)
+    # Try Groq first
+    try:
+        return await _call_groq(system_instruction, prompt)
+    except Exception as groq_error:
+        logger.warning(f"Groq failed, falling back to OpenRouter: {groq_error}")
+        # Fall back to OpenRouter
+        return await _call_openrouter(system_instruction, prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +275,9 @@ async def check_rate_limit(user_id: str | None) -> tuple[bool, int]:
             now = datetime.utcnow()
             tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             retry_after = int((tomorrow - now).total_seconds())
-            logger.info(f"Rate limit exceeded for user={user_id}: {record.request_count}/{limit}, retry_after={retry_after}s")
+            logger.info(
+                f"Rate limit exceeded for user={user_id}: {record.request_count}/{limit}, retry_after={retry_after}s"
+            )
             return False, retry_after
 
         return True, 0
@@ -336,12 +385,7 @@ async def summarize_top_news(top_n: int = 20) -> None:
 
     async with async_session() as session:
         # Get top N unsummarized items by score
-        stmt = (
-            select(News)
-            .where(News.summarized == False)
-            .order_by(News.score.desc())
-            .limit(top_n)
-        )
+        stmt = select(News).where(News.summarized == False).order_by(News.score.desc()).limit(top_n)
         result = await session.execute(stmt)
         items = result.scalars().all()
 

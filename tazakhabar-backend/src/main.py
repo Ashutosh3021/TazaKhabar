@@ -124,3 +124,13 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - returns API info."""
+    return {
+        "name": "TazaKhabar API",
+        "version": "1.0.0",
+        "status": "running",
+    }

@@ -35,6 +35,10 @@ class Job(Base):
     posted_at: Mapped[datetime] = mapped_column(DateTime)
     scraped_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     report_version: Mapped[str] = mapped_column(String(10), default="2")
+    # LLM-processed fields
+    cleaned_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cleaned_company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    processed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class News(Base):

@@ -53,11 +53,15 @@ def _infer_location_type(location: str) -> str:
 
 def _row_to_response(row: Job) -> JobResponse:
     """Map SQLAlchemy Job row to JobResponse."""
+    # Use cleaned data if available, otherwise fallback to raw
+    title = row.cleaned_title if row.cleaned_title else row.title
+    company = row.cleaned_company if row.cleaned_company else row.company
+    
     return JobResponse(
         id=row.id,
-        title=row.title,
+        title=title,
         role=",".join(row.tags) if row.tags else "N/A",
-        company=row.company,
+        company=company,
         location=row.location or "N/A",
         locationType=_infer_location_type(row.location or ""),
         companySize="N/A",

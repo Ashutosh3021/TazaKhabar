@@ -269,9 +269,29 @@ async def get_trends(session: AsyncSession, limit: int = 20) -> list[dict[str, A
         if not trends:
             return []
         
+        # Check if we have previous week data (to determine if this is first run)
+        prev_week_start = week_start - timedelta(days=7)
+        has_prev_data = await session.execute(
+            select(Trend).where(Trend.week_start == prev_week_start)
+        )
+        has_prev_data = has_prev_data.scalars().first() is not None
+        
         # Separate booming and declining
         booming = [t for t in trends if t.percentage_change > 20]
         declining = [t for t in trends if t.percentage_change < -20]
+        
+        # If no previous data, use count-based percentages instead of change-based
+        if not has_prev_data and (booming or declining):
+            # Use raw counts to determine "percentage" (relative popularity)
+            all_trends = list(trends)
+            max_count = max((t.count for t in all_trends), default=1)
+            
+            # Recalculate percentages based on relative count
+            for t in all_trends:
+                t.percentage_change = (t.count / max_count) * 100 if max_count > 0 else 0
+            
+            booming = [t for t in all_trends if t.count >= max_count * 0.7]
+            declining = [t for t in all_trends if t.count < max_count * 0.3]
         
         # Sort by absolute percentage change descending
         booming.sort(key=lambda t: abs(t.percentage_change), reverse=True)
@@ -280,6 +300,14 @@ async def get_trends(session: AsyncSession, limit: int = 20) -> list[dict[str, A
         # Get top 5 booming, top 3 declining
         top_booming = booming[:5]
         top_declining = declining[:3]
+        
+        # If still no booming/declining, pick top by count
+        if not top_booming:
+            sorted_by_count = sorted(trends, key=lambda t: t.count, reverse=True)
+            top_booming = sorted_by_count[:5]
+        if not top_declining:
+            sorted_by_count_asc = sorted(trends, key=lambda t: t.count, reverse=False)
+            top_declining = sorted_by_count_asc[:3]
         
         # Build response
         results = []

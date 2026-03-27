@@ -107,8 +107,8 @@ async def get_jobs(
         print(f"    Pagination -> skip: {skip}, limit: {limit}")
         
         # Build base filter — only active report version
-        base_filter = Job.report_version == "1"
-        print(f"    Filter: report_version = '1'")
+        base_filter = Job.report_version == "2"
+        print(f"    Filter: report_version = '2'")
 
         # Remote filter (AND) — apply at DB level using LIKE
         if remote:

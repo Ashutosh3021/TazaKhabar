@@ -140,9 +140,9 @@ export default function ProfilePage() {
 
   const extractedSkills = useMemo(() => {
     if (atsResult?.ats_score) return atsResult.ats_score;
-    const base = 12;
-    return base + userProfile.roles.length * 3 + (userProfile.experienceLevel ? 2 : 0);
-  }, [atsResult, userProfile.roles.length, userProfile.experienceLevel]);
+    if (!resumeUploaded) return 0;
+    return 0;
+  }, [atsResult, resumeUploaded]);
 
   const remainingSeconds = rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - nowMs) / 1000)) : 0;
   const minutes = Math.floor(remainingSeconds / 60);
@@ -259,6 +259,7 @@ function AccountCard({ email, onSignOut }: { email: string; onSignOut: () => voi
 }
 
 function ResumeCard({ extractedSkills, onFileChange, fileInputRef }: { extractedSkills: number; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; fileInputRef: React.RefObject<HTMLInputElement> }) {
+  const hasAnalysis = extractedSkills > 0;
   return (
     <section>
       <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">04 / RESUME MANAGEMENT</h3>
@@ -266,7 +267,9 @@ function ResumeCard({ extractedSkills, onFileChange, fileInputRef }: { extracted
         <span className="material-symbols-outlined text-4xl text-[#F0EDE6]/20">upload_file</span>
         <div>
           <p className="font-mono text-sm mb-1 uppercase">RESUME.PDF</p>
-          <p className="mono-label text-[10px] text-primary">{extractedSkills} skills extracted_</p>
+          <p className="mono-label text-[10px] text-primary">
+            {hasAnalysis ? `${extractedSkills} ATS SCORE` : "NO RESUME UPLOADED"}
+          </p>
         </div>
         <label className="w-full">
           <input ref={fileInputRef} type="file" accept=".pdf,.txt" onChange={onFileChange} className="hidden" />
@@ -447,6 +450,7 @@ function ToggleSwitch({ checked, onToggle, disabled }: { checked: boolean; onTog
 }
 
 function TerminalCard({ extractedSkills, atsResult, suggestedSkills }: { extractedSkills: number; atsResult: AtsResult | null; suggestedSkills: string[] }) {
+  const hasResumeAnalysis = atsResult !== null;
   return (
     <section>
       <div className="brutalist-border p-4 bg-black">
@@ -458,10 +462,19 @@ function TerminalCard({ extractedSkills, atsResult, suggestedSkills }: { extract
         </div>
         <div className="font-mono text-[11px] leading-relaxed text-[#F0EDE6]/70">
           <p>&gt; INITIALIZING PROFILE_ANALYSIS...</p>
-          <p>&gt; ANALYZING {extractedSkills} SKILLS FROM ATTACHMENT...</p>
-          {atsResult && <p>&gt; ATS_SCORE: <span className="text-primary">{atsResult.ats_score}</span></p>}
-          {suggestedSkills.length > 0 && <p>&gt; SUGGESTED_KEYWORDS: {suggestedSkills.slice(0, 3).join(", ")}...</p>}
-          <p>&gt; STATUS: <span className="text-success-glow">OPTIMIZED_FOR_TREND_04</span></p>
+          {hasResumeAnalysis ? (
+            <>
+              <p>&gt; ANALYZING RESUME ATTACHMENT...</p>
+              <p>&gt; ATS_SCORE: <span className="text-primary">{atsResult.ats_score}</span></p>
+              {atsResult.critical_issues.length > 0 && (
+                <p>&gt; CRITICAL_ISSUES: <span className="text-primary">{atsResult.critical_issues.length}</span> DETECTED</p>
+              )}
+              {suggestedSkills.length > 0 && <p>&gt; SUGGESTED_KEYWORDS: {suggestedSkills.slice(0, 3).join(", ")}...</p>}
+              <p>&gt; STATUS: <span className="text-success-glow">ANALYSIS_COMPLETE</span></p>
+            </>
+          ) : (
+            <p>&gt; STATUS: <span className="text-[#666]">AWAITING_RESUME_UPLOAD</span></p>
+          )}
           <p className="mt-2">&gt; COMPLETE<span className="terminal-cursor">|</span></p>
         </div>
       </div>

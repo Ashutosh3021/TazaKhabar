@@ -101,6 +101,7 @@ def _row_to_response(row: Job) -> JobResponse:
         experienceTier="I",
         emailAvailable=bool(row.email_contact and row.email_contact not in ["", "detected"]),
         applyAvailable=bool(row.apply_link and row.apply_link not in ["", "detected"]),
+        applyLink=row.apply_link,  # Direct apply link from CSV
         description=row.description,  # Include job description from CSV
     )
 

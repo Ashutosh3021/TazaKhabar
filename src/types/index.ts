@@ -20,6 +20,7 @@ export interface Job {
   experienceTier: "I" | "II" | "III" | "IV";
   emailAvailable?: boolean;
   applyAvailable?: boolean;
+  applyLink?: string | null; // Direct apply link from CSV
   is_ghost_job?: boolean; // QUAL-07: true if likely ghost job
   description?: string | null; // Job description from CSV
 }

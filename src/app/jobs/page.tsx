@@ -802,22 +802,23 @@ function JobCard({
           </span>
           EMAIL
         </button>
-        <button
-          type="button"
-          disabled={!job.applyAvailable || job.is_ghost_job}
-          className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border ${
+        <a
+          href={job.applyAvailable && !job.is_ghost_job ? job.applyLink || "#" : "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex-1 py-3 font-mono text-[11px] font-bold uppercase tracking-widest border text-center no-underline ${
             job.is_ghost_job
               ? "border-border-dark text-[#444]/40 bg-[#000000]/5 cursor-not-allowed"
               : job.applyAvailable
                 ? "border-[#00FF41]/80 text-[#00FF41] bg-[#00FF41]/5 hover:bg-[#00FF41]/15 hover:text-[#00FF41]"
-                : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed"
+                : "border-border-dark text-[#444] bg-[#000000]/10 cursor-not-allowed pointer-events-none"
           }`}
         >
           <span className="material-symbols-outlined text-sm mr-2">
             rocket_launch
           </span>
           APPLY
-        </button>
+        </a>
       </div>
 
       <div className="flex items-center justify-between mt-auto pt-2">

@@ -12,6 +12,8 @@ const ROLE_CHIPS = [
   "Full Stack",
   "Data Engineer",
   "ML Engineer",
+  "Data Science",
+  "Gen AI",
   "DevOps/SRE",
   "Product Manager",
   "Mobile Dev",
@@ -43,6 +45,10 @@ export default function JobsPage() {
   >("");
   const [tab, setTab] = useState<"ALL" | "SAVED" | "APPLIED">("ALL");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [skip, setSkip] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 50;
 
   // Fetch jobs from live API when version changes or filters change
   useEffect(() => {
@@ -53,10 +59,12 @@ export default function JobsPage() {
           roles: activeFilters.roles,
           remote: activeFilters.location === "Remote",
           skip: 0,
-          limit: 50,
+          limit: PAGE_SIZE,
         });
         if (!cancelled) {
           setJobs(result.data);
+          setSkip(PAGE_SIZE);
+          setHasMore(result.meta.has_more);
           setApiError(null);
         }
       } catch (err) {
@@ -69,6 +77,51 @@ export default function JobsPage() {
     loadJobs();
     return () => { cancelled = true; };
   }, [radarVersion, activeFilters.roles, activeFilters.location]);
+
+  // Load more jobs for infinite scroll
+  const loadMoreJobs = async () => {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      const result = await fetchJobs({
+        roles: activeFilters.roles,
+        remote: activeFilters.location === "Remote",
+        skip: skip,
+        limit: PAGE_SIZE,
+      });
+      if (result.data.length > 0) {
+        setJobs(prev => [...prev, ...result.data]);
+        setSkip(prev => prev + PAGE_SIZE);
+        setHasMore(result.meta.has_more);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Failed to load more jobs:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMoreJobs();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const sentinel = document.getElementById("jobs-sentinel");
+    if (sentinel) {
+      observer.observe(sentinel);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, skip]);
 
   const companySizes = useMemo(() => {
     const set = new Set(jobs.map((j) => j.companySize));
@@ -619,6 +672,27 @@ export default function JobsPage() {
                     onToggleSaved={() => toggleSavedJob(job.id)}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Sentinel for infinite scroll */}
+            <div id="jobs-sentinel" className="h-4" />
+            
+            {/* Loading indicator for more jobs */}
+            {loadingMore && (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="mono-label text-[10px] text-dim-text uppercase">Loading more roles...</p>
+                </div>
+              </div>
+            )}
+
+            {!hasMore && jobs.length > 0 && (
+              <div className="text-center py-6">
+                <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.2em]">
+                  You've reached the end • {jobs.length} roles loaded
+                </p>
               </div>
             )}
 

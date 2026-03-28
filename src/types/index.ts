@@ -21,6 +21,7 @@ export interface Job {
   emailAvailable?: boolean;
   applyAvailable?: boolean;
   is_ghost_job?: boolean; // QUAL-07: true if likely ghost job
+  description?: string | null; // Job description from CSV
 }
 
 export interface Trend {

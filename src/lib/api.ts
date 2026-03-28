@@ -317,3 +317,185 @@ export async function fetchObservation(): Promise<{
   if (!res.ok) throw new Error(`Failed to fetch observation: ${res.status}`);
   return res.json();
 }
+
+/**
+ * Get CSV file statistics.
+ */
+export async function getCsvStats(): Promise<{
+  status: string;
+  data: {
+    jobs_csv_exists: boolean;
+    company_csv_exists: boolean;
+    jobs_count: number;
+    companies_count: number;
+    sample_jobs: Array<{
+      title: string;
+      company: string;
+      location: string;
+      apply_link: boolean;
+    }>;
+  };
+}> {
+  const res = await fetch(`${API_BASE}/api/csv/stats`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch CSV stats: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Load jobs from CSV into the database.
+ */
+export async function loadJobsFromCsv(
+  limit: number = 100,
+  clearExisting: boolean = false
+): Promise<{
+  status: string;
+  message: string;
+  data: {
+    success: number;
+    errors: string[];
+    total: number;
+  };
+}> {
+  const res = await fetch(
+    `${API_BASE}/api/csv/load-jobs?limit=${limit}&clear_existing=${clearExisting}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to load CSV jobs: ${res.status}`);
+  return res.json();
+}
+
+// ============================================================================
+// Q&A / Career Bot API
+// ============================================================================
+
+export interface QaProfile {
+  has_profile: boolean;
+  name?: string;
+  roles: string[];
+  experience_level: string;
+  ats_score?: number;
+  has_resume: boolean;
+  suggested_skills: string[];
+  missing_skills: string[];
+}
+
+export interface RoleMatch {
+  role: string;
+  match_percentage: number;
+  job_count: number;
+  skills: string[];
+  why: string;
+  locked: boolean;
+}
+
+export interface MarketVelocity {
+  overall_velocity: number;
+  skills: Array<{
+    skill: string;
+    demand_count: number;
+    velocity: number;
+    trend: string;
+  }>;
+  region: string;
+  updated_at: string;
+}
+
+export interface NetworkInfluence {
+  score: number;
+  percentile: string;
+  factors: Array<{
+    name: string;
+    value: string;
+    description: string;
+  }>;
+}
+
+export interface ActionRequired {
+  actions: Array<{
+    type: string;
+    priority: string;
+    title: string;
+    description: string;
+    action_text: string;
+    link: string;
+  }>;
+}
+
+/**
+ * Get user profile for Q&A page.
+ */
+export async function fetchQaProfile(): Promise<QaProfile> {
+  const res = await fetch(`${API_BASE}/api/qa/profile`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch Q&A profile: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Get job role matches based on user profile.
+ */
+export async function fetchRoleMatches(limit: number = 5): Promise<{
+  matches: RoleMatch[];
+  total_available: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/qa/matches?limit=${limit}`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch role matches: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Get market velocity for user's skills.
+ */
+export async function fetchMarketVelocity(): Promise<MarketVelocity> {
+  const res = await fetch(`${API_BASE}/api/qa/market-velocity`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch market velocity: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Get network influence score.
+ */
+export async function fetchNetworkInfluence(): Promise<NetworkInfluence> {
+  const res = await fetch(`${API_BASE}/api/qa/network-influence`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch network influence: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Get action items for user profile.
+ */
+export async function fetchActionRequired(): Promise<ActionRequired> {
+  const res = await fetch(`${API_BASE}/api/qa/action-required`, {
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch action required: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Chat with the career bot.
+ */
+export async function sendChatMessage(message: string): Promise<{
+  response: string;
+  timestamp: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/qa/chat`, {
+    method: "POST",
+    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) throw new Error(`Failed to send chat message: ${res.status}`);
+  return res.json();
+}

@@ -10,6 +10,8 @@ from src.api.observation import router as observation_router
 from src.api.resume import router as resume_router
 from src.api.profile import router as profile_router
 from src.api.digest import router as digest_router
+from src.api.csv_loader import router as csv_loader_router
+from src.api.qa import router as qa_router
 
 __all__ = [
     "jobs_router",
@@ -21,4 +23,6 @@ __all__ = [
     "resume_router",
     "profile_router",
     "digest_router",
+    "csv_loader_router",
+    "qa_router",
 ]

@@ -23,7 +23,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    hn_item_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    hn_item_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(500))
     company: Mapped[str] = mapped_column(String(200))
     location: Mapped[str] = mapped_column(String(200), default="N/A")
@@ -38,6 +38,8 @@ class Job(Base):
     # LLM-processed fields
     cleaned_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     cleaned_company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

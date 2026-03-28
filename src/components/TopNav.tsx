@@ -9,7 +9,8 @@ const navLinks = [
   { href: "/setup/1", label: "01/SETUP", matchPrefix: "/setup" },
   { href: "/jobs", label: "02/JOBS", matchPrefix: "/jobs" },
   { href: "/trends", label: "03/TRENDS", matchPrefix: "/trends" },
-  { href: "/digest", label: "04/DIGEST", matchPrefix: "/digest" },
+  { href: "/qa", label: "04/Q&A", matchPrefix: "/qa" },
+  { href: "/digest", label: "05/DIGEST", matchPrefix: "/digest" },
 ];
 
 export default function TopNav() {

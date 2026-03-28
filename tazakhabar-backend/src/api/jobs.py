@@ -23,19 +23,37 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 # Role-to-keyword mapping for filters
 ROLE_KEYWORDS = {
-    "AI/ML": ["machine learning", "ml", "ai", "deep learning", "nlp", "llm", "gpt", "artificial intelligence", "data science", "neural", "tensorflow", "pytorch", "reinforcement"],
-    "Frontend": ["frontend", "front-end", "react", "vue", "angular", "ui", "ux", "css", "javascript", "typescript", "next.js", "svelte"],
-    "Backend": ["backend", "back-end", "api", "server", "database", "postgres", "postgresql", "node", "python", "go", "rust", "java", "golang"],
-    "Fullstack": ["fullstack", "full-stack", "full stack", "mern", "mean", "全栈"],
+    "ML Engineer": ["machine learning", "ml", "ai", "deep learning", "nlp", "llm", "gpt", "artificial intelligence", "tensorflow", "pytorch", "reinforcement", "mle"],
+    "Data Science": ["data science", "data scientist", "data analysis", "analytics", "statistical"],
+    "Gen AI": ["gen ai", "generative ai", "gpt", "openai", "chatgpt", "prompt"],
+    "Frontend Dev": ["frontend", "front-end", "react", "vue", "angular", "ui", "ux", "css", "javascript", "typescript", "next.js", "svelte"],
+    "Backend Dev": ["backend", "back-end", "api", "server", "database", "postgres", "postgresql", "node", "python", "go", "rust", "java", "golang"],
+    "Full Stack": ["fullstack", "full-stack", "full stack", "mern", "mean", "全栈"],
+    "DevOps/SRE": ["devops", "sre", "site reliability", "kubernetes", "docker", "terraform", "ansible"],
+    "Cloud Architect": ["cloud", "aws", "azure", "gcp", "cloud architect", "solution architect"],
+    "Data Engineer": ["data engineer", "etl", "pipeline", "airflow", "dbt", "data pipeline"],
+    "Data Analyst": ["data analyst", "analytics", "excel", "bi", "tableau", "visualization"],
+    "Product Manager": ["product manager", "pm", "product owner", "product management"],
+    "Mobile Dev": ["mobile", "react native", "flutter", "ios", "android", "mobile developer"],
+    "QA Engineer": ["qa", "quality", "test", "testing", "automation test", "selenium", "cypress"],
+    "Security": ["security", "appsec", "infosec", "cybersecurity", "security engineer"],
 }
 
 STARTUP_KEYWORDS = ["series a", "series b", "series c", "series d", "seed", "stealth", "y combinator", "yc", "startup"]
 REMOTE_KEYWORDS = ["remote", "work from home", "wfh", "anywhere", "distributed"]
 
 
-def _job_matches_role(job_tags: list[str], role: str) -> bool:
-    """Check if job tags match a role's keywords."""
+def _job_matches_role(job_tags: list[str], job_role: str | None, role: str) -> bool:
+    """Check if job tags or role match a role's keywords."""
+    # First check if the job's LLM-extracted role matches directly
+    if job_role and role.lower() in job_role.lower():
+        return True
+    
+    # Then check keywords in tags
     keywords = ROLE_KEYWORDS.get(role, [])
+    if not keywords:
+        return False
+    
     tags_lower = [t.lower() for t in job_tags]
     return any(kw.lower() in tags_lower for kw in keywords)
 
@@ -57,10 +75,17 @@ def _row_to_response(row: Job) -> JobResponse:
     title = row.cleaned_title if row.cleaned_title else row.title
     company = row.cleaned_company if row.cleaned_company else row.company
     
+    # Use LLM-extracted role if available, otherwise try to infer from tags
+    role = row.role
+    if not role and row.tags:
+        role = _infer_role_from_tags(row.tags)
+    if not role:
+        role = "Other"
+    
     return JobResponse(
         id=row.id,
         title=title,
-        role=",".join(row.tags) if row.tags else "N/A",
+        role=role,
         company=company,
         location=row.location or "N/A",
         locationType=_infer_location_type(row.location or ""),
@@ -74,9 +99,42 @@ def _row_to_response(row: Job) -> JobResponse:
         saved=False,
         applied=False,
         experienceTier="I",
-        emailAvailable=bool(row.email_contact),
-        applyAvailable=bool(row.apply_link),
+        emailAvailable=bool(row.email_contact and row.email_contact not in ["", "detected"]),
+        applyAvailable=bool(row.apply_link and row.apply_link not in ["", "detected"]),
+        description=row.description,  # Include job description from CSV
     )
+
+
+def _infer_role_from_tags(tags: list[str]) -> str:
+    """Infer standardized role from job tags."""
+    if not tags:
+        return "Other"
+    
+    tags_lower = [t.lower() for t in tags]
+    tags_str = " ".join(tags_lower)
+    
+    role_mappings = [
+        (["ml", "machine learning", "deep learning", "ai", "nlp", "llm"], "ML Engineer"),
+        (["data science", "data scientist", "data analysis"], "Data Science"),
+        (["gen ai", "generative ai", "gpt", "llm"], "Gen AI"),
+        (["frontend", "react", "vue", "angular", "ui"], "Frontend Dev"),
+        (["backend", "api", "server", "database", "postgres"], "Backend Dev"),
+        (["fullstack", "full-stack", "mern", "mean"], "Full Stack"),
+        (["devops", "sre", "kubernetes", "docker"], "DevOps/SRE"),
+        (["cloud", "aws", "azure", "gcp"], "Cloud Architect"),
+        (["data engineer", "etl", "pipeline"], "Data Engineer"),
+        (["data analyst", "analytics", "excel"], "Data Analyst"),
+        (["product manager", "pm"], "Product Manager"),
+        (["mobile", "react native", "flutter", "ios", "android"], "Mobile Dev"),
+        (["qa", "test", "quality"], "QA Engineer"),
+        (["security", "appsec", "infosec"], "Security"),
+    ]
+    
+    for keywords, role in role_mappings:
+        if any(kw in tags_str for kw in keywords):
+            return role
+    
+    return "Other"
 
 
 @router.get(
@@ -140,7 +198,7 @@ async def get_jobs(
         # (all rows matching DB filters, before Python filtering). This means when role
         # filters are applied, has_more may overcount — acceptable for MVP.
         if roles:
-            filtered = [r for r in rows if any(_job_matches_role(r.tags or [], role) for role in roles)]
+            filtered = [r for r in rows if any(_job_matches_role(r.tags or [], r.role, role) for role in roles)]
             print(f"    After role filter ({roles}): {len(filtered)} jobs")
         else:
             filtered = rows

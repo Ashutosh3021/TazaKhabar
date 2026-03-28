@@ -19,7 +19,7 @@ function formatMonoDate(d: Date) {
 
 export default function DigestPage() {
   const [tab, setTab] = useState<Tab>("ALL");
-  const { feedNewCount, refreshFeed, isFetchingFeed, feedVersion } = useTaza();
+  const { feedNewCount, refreshFeed, isFetchingFeed, feedVersion, savedJobs, toggleSavedJob } = useTaza();
   const [digestItems, setDigestItems] = useState<DigestItem[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -54,8 +54,6 @@ export default function DigestPage() {
     [feedVersion, digestItems],
   );
 
-  const [bookmarked, setBookmarked] = useState<string[]>([]);
-
   const rotatedDigest = useMemo(() => {
     const shift = feedVersion % (digestItems.length || mockDigestItems.length);
     const source = digestItems.length > 0 ? digestItems : mockDigestItems;
@@ -66,6 +64,12 @@ export default function DigestPage() {
     const nonFeatured = rotatedDigest.filter((d) => d.id !== featured.id);
     return tab === "ALL" ? nonFeatured : nonFeatured.filter((d) => d.category === tab);
   }, [featured.id, tab, rotatedDigest]);
+
+  const isBookmarked = (id: string) => savedJobs.includes(id);
+
+  const handleToggleBookmark = (id: string) => {
+    toggleSavedJob(id);
+  };
 
   const today = typeof window === "undefined" ? new Date() : new Date();
 
@@ -167,14 +171,8 @@ export default function DigestPage() {
                 <DigestRow
                   key={item.id}
                   item={item}
-                  bookmarked={bookmarked.includes(item.id)}
-                  onToggleBookmark={() => {
-                    setBookmarked((prev) =>
-                      prev.includes(item.id)
-                        ? prev.filter((id) => id !== item.id)
-                        : [...prev, item.id],
-                    );
-                  }}
+                  bookmarked={isBookmarked(item.id)}
+                  onToggleBookmark={() => handleToggleBookmark(item.id)}
                 />
               ))}
             </div>

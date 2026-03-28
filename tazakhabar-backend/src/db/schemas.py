@@ -35,6 +35,7 @@ class JobResponse(BaseModel):
     experienceTier: str = "I"  # "I" | "II" | "III" | "IV"
     emailAvailable: bool = False
     applyAvailable: bool = True
+    description: str | None = None  # Job description from CSV
 
 
 class NewsResponse(BaseModel):

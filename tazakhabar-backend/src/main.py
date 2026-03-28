@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router
+from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router, csv_loader_router, qa_router
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Configure logging
@@ -48,6 +48,20 @@ async def lifespan(app: FastAPI):
     from src.services.embedding_service import get_embedding_model
     model = get_embedding_model()
     print(">>> [OK] Embedding model loaded")
+
+    # Load jobs from CSV on startup
+    print(">>> [STARTUP] Loading jobs from CSV...")
+    try:
+        from src.services.csv_loader_service import load_jobs_from_csv, get_csv_stats
+        stats = await get_csv_stats()
+        if stats['jobs_csv_exists'] and stats['jobs_count'] > 0:
+            print(f">>> [CSV] Found {stats['jobs_count']} jobs in CSV")
+            result = await load_jobs_from_csv(limit=200, clear_existing=False)
+            print(f">>> [CSV] Loaded {result['success']} jobs into database")
+        else:
+            print(">>> [CSV] No jobs found in CSV file")
+    except Exception as e:
+        print(f">>> [CSV] Warning: Could not load CSV jobs: {e}")
 
     # Import and start scheduler
     print(">>> [STARTUP] Starting scraper scheduler...")
@@ -96,6 +110,10 @@ app.include_router(profile_router)
 print("    + /api/profile registered")
 app.include_router(digest_router)
 print("    + /api/digest registered")
+app.include_router(csv_loader_router)
+print("    + /api/csv registered")
+app.include_router(qa_router)
+print("    + /api/qa registered")
 
 # Add CORS middleware
 print(">>> [SETUP] Configuring CORS middleware...")

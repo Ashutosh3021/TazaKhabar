@@ -5,7 +5,7 @@ Handles promotion/demotion of scraped data between report versions.
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Job, News, Report
@@ -20,7 +20,7 @@ async def advance_report_cycle(session: AsyncSession) -> int:
     Steps:
     1. Demote all report_version="1" → "archived"
     2. Promote report_version="2" → "1"
-    3. Count new items for badge (report_version="1" scraped in last 24h)
+    3. Count active items for badge since the last report swap
     4. Create new Report record
     5. Return new_count
 
@@ -44,20 +44,29 @@ async def advance_report_cycle(session: AsyncSession) -> int:
             update(News).where(News.report_version == "2").values(report_version="1")
         )
 
-        # Step 3: Count new items (report_version="1" scraped in last 24h)
-        cutoff = datetime.utcnow() - timedelta(hours=24)
-        job_count_result = await session.execute(
-            select(func.count(Job.id)).where(
-                Job.report_version == "1",
-                Job.scraped_at >= cutoff,
+        # Step 3: Count active items since the last swap window if available
+        last_swap = await get_last_swap_time(session)
+        if last_swap:
+            job_count_result = await session.execute(
+                select(func.count(Job.id)).where(Job.report_version == "1")
             )
-        )
-        news_count_result = await session.execute(
-            select(func.count(News.id)).where(
-                News.report_version == "1",
-                News.scraped_at >= cutoff,
+            news_count_result = await session.execute(
+                select(func.count(News.id)).where(News.report_version == "1")
             )
-        )
+        else:
+            cutoff = datetime.utcnow() - timedelta(hours=24)
+            job_count_result = await session.execute(
+                select(func.count(Job.id)).where(
+                    Job.report_version == "1",
+                    Job.scraped_at >= cutoff,
+                )
+            )
+            news_count_result = await session.execute(
+                select(func.count(News.id)).where(
+                    News.report_version == "1",
+                    News.scraped_at >= cutoff,
+                )
+            )
         new_count = (job_count_result.scalar() or 0) + (news_count_result.scalar() or 0)
 
         # Step 4: Create new Report record
@@ -82,30 +91,31 @@ async def advance_report_cycle(session: AsyncSession) -> int:
 
 async def get_badge_counts(session: AsyncSession) -> dict:
     """
-    Get badge counts for new items since last scrape cycle.
+    Get badge counts for new items since last report swap.
 
     Returns:
         Dict with radar_new_count and feed_new_count
     """
     try:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
-
-        # Count jobs scraped in last 24h with active report version
-        job_result = await session.execute(
-            select(func.count(Job.id)).where(
+        last_swap = await get_last_swap_time(session)
+        if last_swap:
+            job_stmt = select(func.count(Job.id)).where(Job.report_version == "1")
+            news_stmt = select(func.count(News.id)).where(News.report_version == "1")
+        else:
+            cutoff = datetime.utcnow() - timedelta(hours=24)
+            job_stmt = select(func.count(Job.id)).where(
                 Job.report_version == "1",
                 Job.scraped_at >= cutoff,
             )
-        )
-        radar_count = job_result.scalar() or 0
-
-        # Count news scraped in last 24h with active report version
-        news_result = await session.execute(
-            select(func.count(News.id)).where(
+            news_stmt = select(func.count(News.id)).where(
                 News.report_version == "1",
                 News.scraped_at >= cutoff,
             )
-        )
+
+        job_result = await session.execute(job_stmt)
+        radar_count = job_result.scalar() or 0
+
+        news_result = await session.execute(news_stmt)
         feed_count = news_result.scalar() or 0
 
         return {
@@ -155,6 +165,10 @@ async def swap_reports(session: AsyncSession) -> dict:
         RefreshResponse dict with status and zero counts
     """
     try:
+        # Remove stale archived items before swapping in the new report cycle
+        await session.execute(delete(Job).where(Job.report_version == "archived"))
+        await session.execute(delete(News).where(News.report_version == "archived"))
+
         # Step 1: Demote existing "1" → "archived"
         await session.execute(
             update(Job).where(Job.report_version == "1").values(report_version="archived")

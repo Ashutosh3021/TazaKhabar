@@ -64,10 +64,10 @@ class WhoIsHiringScraper(BaseScraper):
                 logger.info(f"Found Who Is Hiring thread: {hit.get('title', '')[:80]}")
                 return hit
         
-            logger.warning("No Who Is Hiring thread found in search results")
-            print(">>> [WIH-SCRAPER] WARNING: No Who Is Hiring thread found!")
-            return None
-    
+        logger.warning("No Who Is Hiring thread found in search results")
+        print(">>> [WIH-SCRAPER] WARNING: No Who Is Hiring thread found!")
+        return None
+
     def parse_comment(self, comment: dict[str, Any]) -> dict[str, Any] | None:
         """
         Parse HN comment text to extract job information.
@@ -81,9 +81,11 @@ class WhoIsHiringScraper(BaseScraper):
             Job dict with extracted data, or None if parsing fails.
         """
         try:
-            # Unescape HTML entities (HN returns HTML-encoded text)
+            # Unescape HTML entities and strip HN comment HTML formatting
             raw_text = comment.get("text", "") or ""
             text = unescape(raw_text)
+            text = re.sub(r'<[^>]+>', '', text)
+            text = re.sub(r'\s+', ' ', text).strip()
             author = comment.get("author", "")
             
             if not text.strip():
@@ -171,6 +173,8 @@ class WhoIsHiringScraper(BaseScraper):
             # Get HN item ID
             hn_item_id = comment.get("id")
             
+            is_ghost_job = email is None and apply_link is None
+            
             return {
                 "hn_item_id": int(hn_item_id) if hn_item_id else 0,
                 "title": title,
@@ -179,7 +183,7 @@ class WhoIsHiringScraper(BaseScraper):
                 "tags": tags,
                 "email_contact": email,
                 "apply_link": apply_link,
-                "is_ghost_job": False,
+                "is_ghost_job": is_ghost_job,
                 "deadline": deadline,
                 "posted_at": datetime.utcnow(),
             }
@@ -249,8 +253,8 @@ class WhoIsHiringScraper(BaseScraper):
                 print(f">>> [WIH-SCRAPER] ERROR: Could not fetch story {thread_id}")
                 return {"collected": 0, "new": 0}
             
-            # Get comment IDs from story's kids
-            comment_ids = story.get("kids", [])[:100]  # Limit to first 100 comments
+            # Get all top-level comment IDs from the story
+            comment_ids = story.get("kids", [])
             print(f">>> [WIH-SCRAPER] Found {len(comment_ids)} comment IDs in story")
             
             # Fetch all comments in parallel

@@ -71,10 +71,12 @@ async def _run_scraper_with_notifications(scraper_func):
     result = await scraper_func()
     
     async with async_session() as session:
-        queued = await check_and_queue_notifications(session)
-        if queued > 0:
-            logger.info(f"Queued {queued} notifications after scraper run")
-    
+        try:
+            queued = await check_and_queue_notifications(session)
+            if queued > 0:
+                logger.info(f"Queued {queued} notifications after scraper run")
+        except Exception as e:
+            logger.warning(f"Notification processing failed after scraper run: {e}")
     return result
 
 

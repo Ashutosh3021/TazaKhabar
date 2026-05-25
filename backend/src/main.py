@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
         stats = await get_csv_stats()
         if stats['jobs_csv_exists'] and stats['jobs_count'] > 0:
             print(f">>> [CSV] Found {stats['jobs_count']} jobs in CSV")
-            result = await load_jobs_from_csv(limit=200, clear_existing=False)
+            result = await load_jobs_from_csv(limit=None, clear_existing=False)
             print(f">>> [CSV] Loaded {result['success']} jobs into database")
         else:
             print(">>> [CSV] No jobs found in CSV file")

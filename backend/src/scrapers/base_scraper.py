@@ -46,6 +46,7 @@ class BaseScraper:
         """
         total = len(jobs)
         new_count = 0
+        saved_jobs: list[tuple[str, str, str, str | None]] = []  # (id, title, company, location)
         
         async with async_session() as session:
             for job_data in jobs:
@@ -75,6 +76,8 @@ class BaseScraper:
                     )
                     
                     session.add(job)
+                    await session.flush()
+                    saved_jobs.append((job.id, job.title, job.company, job.location))
                     new_count += 1
                     
                 except Exception as e:
@@ -84,6 +87,17 @@ class BaseScraper:
             await session.commit()
         
         logger.info(f"Saved {new_count}/{total} new jobs")
+
+        if saved_jobs:
+            try:
+                from src.services.embedding_service import embed_job_item
+                loop = asyncio.get_running_loop()
+                for job_id, title, company, location in saved_jobs:
+                    loop.create_task(embed_job_item(job_id, title, company, location))
+                logger.info(f"Scheduled embedding generation for {len(saved_jobs)} job items")
+            except Exception as e:
+                logger.warning(f"Failed to schedule job embeddings: {e}")
+
         return total, new_count
     
     async def save_news(self, items: list[dict[str, Any]], news_type: str) -> tuple[int, int]:
@@ -130,8 +144,9 @@ class BaseScraper:
                     )
                     
                     session.add(news)
-                    new_count += 1
+                    await session.flush()
                     saved_news.append((news.id, title, summary))
+                    new_count += 1
                     
                 except Exception as e:
                     logger.error(f"Failed to save news item: {e}")
@@ -163,16 +178,3 @@ class BaseScraper:
 
         return total, new_count
 
-    async def embed_saved_news(self, news_ids: list[str], titles: list[str], summaries: list[str | None], news_type: str) -> None:
-        """
-        Generate and store embeddings for saved news items.
-        Incremental: called after save_news commits.
-        """
-        try:
-            from src.services.embedding_service import embed_news_item
-            loop = asyncio.get_running_loop()
-            for news_id, title, summary in zip(news_ids, titles, summaries):
-                loop.create_task(embed_news_item(news_id, title, summary, news_type))
-            logger.info(f"Scheduled embedding generation for {len(news_ids)} news items")
-        except Exception as e:
-            logger.warning(f"Failed to schedule embeddings: {e}")

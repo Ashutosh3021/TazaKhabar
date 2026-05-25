@@ -169,6 +169,42 @@ async def embed_news_item(
     logger.info(f"Generated and stored content embedding for news_id={news_id}")
 
 
+async def embed_job_item(
+    job_id: str,
+    title: str,
+    company: str,
+    location: str | None,
+) -> None:
+    """
+    Generate and store embedding for a job item.
+    Incremental: skips if already embedded.
+    """
+    text = f"JOB: {title} at {company} {location or ''}"
+    embedding_bytes = generate_text_embedding(text[:2000])
+
+    async with async_session() as session:
+        existing = await session.execute(
+            select(Embedding).where(
+                Embedding.item_id == job_id,
+                Embedding.item_type == "job",
+            )
+        )
+        if existing.scalar_one_or_none():
+            return
+
+        session.add(
+            Embedding(
+                id=uuid.uuid4().hex,
+                item_id=job_id,
+                item_type="job",
+                embedding=embedding_bytes,
+            )
+        )
+        await session.commit()
+
+    logger.info(f"Generated and stored content embedding for job_id={job_id}")
+
+
 # ---------------------------------------------------------------------------
 # Cosine similarity
 # ---------------------------------------------------------------------------

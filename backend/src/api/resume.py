@@ -19,6 +19,7 @@ from src.services.resume_service import (
     extract_keywords_from_resume,
     extract_text,
     generate_suggested_additions,
+    chunk_resume_sections,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,15 +138,31 @@ async def analyse_resume(
             user = result.scalar_one_or_none()
             if user:
                 user_roles = user.roles or []
+    # 10. Compute resume sections and fetch live trending keywords
+    sections = chunk_resume_sections(text)
 
-    # Use top TECH_KEYWORDS as booming keywords proxy
-    from src.services.trend_service import TECH_KEYWORDS
+    from src.services.trend_service import TrendService
 
-    # 10. Generate suggested additions
+    booming_keywords: list[str] = []
+    try:
+        async with async_session() as session:
+            ts = TrendService()
+            trending = await ts.get_trending(session, limit=20)
+            # Prefer explicitly booming skills; fallback to top skills
+            booming = [t.get("skill", "").lower() for t in trending if t.get("direction") == "booming"]
+            if booming:
+                booming_keywords = booming[:20]
+            else:
+                booming_keywords = [t.get("skill", "").lower() for t in trending][:20]
+    except Exception:
+        booming_keywords = []
+
+    # 11. Generate suggested additions using sections and live trends
     suggested = await generate_suggested_additions(
         resume_keywords=resume_keywords,
         user_roles=user_roles,
-        booming_keywords=TECH_KEYWORDS[:20],
+        booming_keywords=booming_keywords,
+        resume_sections=sections,
     )
     print(f">>> [API:POST /api/resume/analyse] Suggestions: {suggested}")
 

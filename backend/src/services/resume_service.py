@@ -239,12 +239,15 @@ async def analyze_resume_ats(resume_text: str) -> dict[str, Any]:
 # Suggested additions
 # ---------------------------------------------------------------------------
 
-SUGGESTIONS_PROMPT = """Based on this resume and the current tech market, suggest 5-7 keywords or technologies to add.
+SUGGESTIONS_PROMPT = """You are a concise career assistant.
+
+Based on the provided resume content and current market trends, suggest 5-7 keywords or technologies the candidate should add to increase discoverability and match against target roles.
 
 Return ONLY a JSON array (no markdown, no explanation):
 ["keyword1", "keyword2", ...]
 
-Resume keywords: {resume_keywords}
+Resume skills section: {skills_section}
+Resume experience excerpt: {experience_excerpt}
 User target roles: {user_roles}
 Top trending keywords in tech market: {booming_keywords}
 
@@ -255,21 +258,28 @@ async def generate_suggested_additions(
     resume_keywords: list[str],
     user_roles: list[str],
     booming_keywords: list[str],
+    resume_sections: dict[str, str] | None = None,
 ) -> list[str]:
     """
-    Generate keyword suggestions based on resume, roles, and market trends.
+    Generate keyword suggestions using resume sections and market trends.
 
     Args:
         resume_keywords: Already-present keywords in resume.
         user_roles: Target job roles.
-        booming_keywords: Top trending tech keywords.
+        booming_keywords: Top trending tech keywords (lowercased list).
+        resume_sections: Optional dict of parsed resume sections from chunk_resume_sections().
 
     Returns:
         List of 5-7 suggested keywords to add.
     """
     import json
 
+    skills_section = (resume_sections or {}).get("skills", "")[:2000] if resume_sections else ""
+    experience_excerpt = (resume_sections or {}).get("experience", "")[:2000] if resume_sections else ""
+
     prompt = SUGGESTIONS_PROMPT.format(
+        skills_section=skills_section,
+        experience_excerpt=experience_excerpt,
         resume_keywords=", ".join(resume_keywords[:50]),
         user_roles=", ".join(user_roles) if user_roles else "software engineer",
         booming_keywords=", ".join(booming_keywords[:20]),
@@ -284,7 +294,7 @@ async def generate_suggested_additions(
 
         # Filter out keywords already in resume
         resume_lower = {kw.lower() for kw in resume_keywords}
-        filtered = [s for s in suggestions if s.lower() not in resume_lower]
+        filtered = [s for s in suggestions if isinstance(s, str) and s.lower() not in resume_lower]
         return filtered[:7]
     except (json.JSONDecodeError, Exception) as e:
         logger.error(f"Failed to generate suggestions: {e}")

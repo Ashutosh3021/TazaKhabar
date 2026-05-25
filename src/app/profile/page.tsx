@@ -115,6 +115,19 @@ export default function ProfilePage() {
       });
       setLastAnalysisAt(new Date().toISOString());
       setCooldownDays(30);
+
+      // Refresh server-side profile so stored ATS fields are synced
+      try {
+        const profile = await fetchProfile();
+        setUserProfile({
+          ...userProfile,
+          roles: profile.roles || userProfile.roles,
+          experienceLevel: profile.experience_level || userProfile.experienceLevel,
+          email: profile.email || userProfile.email,
+        });
+      } catch (e) {
+        // non-fatal: keep local ATS result
+      }
     } catch (err: unknown) {
       const error = err as { retry_after?: number; code?: string; message?: string; days_remaining?: number };
       if (error.retry_after) setRateLimitedUntil(Date.now() + error.retry_after * 1000);
@@ -123,7 +136,7 @@ export default function ProfilePage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [cooldownDays]);
+  }, [cooldownDays, userProfile, setUserProfile]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -137,6 +150,35 @@ export default function ProfilePage() {
     };
     reader.readAsDataURL(file);
   }, [handleAnalyze, setResumeUploaded]);
+
+  const handleAnalyzeStoredResume = useCallback(async () => {
+    const savedResume = localStorage.getItem("taza_resume_pdf");
+    if (!savedResume) {
+      setAnalyzeError("No stored resume found. Please upload a PDF or TXT file.");
+      return;
+    }
+
+    const parts = savedResume.split(",");
+    if (parts.length < 2) {
+      setAnalyzeError("Stored resume data is invalid. Please re-upload your resume.");
+      return;
+    }
+
+    const prefix = parts[0] || "";
+    const base64 = parts[1];
+    const contentTypeMatch = prefix.match(/^data:([^;]+);base64$/);
+    const contentType = contentTypeMatch?.[1] ?? "application/pdf";
+    const extension = contentType === "text/plain" ? "txt" : "pdf";
+
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    const file = new File([bytes], `resume.${extension}`, { type: contentType });
+    await handleAnalyze(file);
+  }, [handleAnalyze]);
 
   const extractedSkills = useMemo(() => {
     if (atsResult?.ats_score) return atsResult.ats_score;
@@ -228,6 +270,7 @@ export default function ProfilePage() {
                 analyzeError={analyzeError}
                 cooldownDays={cooldownDays}
                 onUpload={() => fileInputRef.current?.click()}
+                onAnalyze={resumeUploaded ? handleAnalyzeStoredResume : () => fileInputRef.current?.click()}
               />
               <OperationalPreferencesSection hasAccount={hasAccount} />
               <TerminalCard extractedSkills={extractedSkills} atsResult={atsResult} suggestedSkills={suggestedSkills} />
@@ -323,27 +366,25 @@ function ExperienceCard({ label }: { label: string }) {
 }
 
 function ResumeIntelligenceSection({
-  resumeUploaded, isAnalyzing, isRateLimited, countdownLabel, atsResult, suggestedSkills, analyzeError, cooldownDays, onUpload
+  resumeUploaded, isAnalyzing, isRateLimited, countdownLabel, atsResult, suggestedSkills, analyzeError, cooldownDays, onUpload, onAnalyze
 }: {
   resumeUploaded: boolean; isAnalyzing: boolean; isRateLimited: boolean; countdownLabel: string;
   atsResult: AtsResult | null; suggestedSkills: string[]; analyzeError: string | null;
-  cooldownDays: number | null; onUpload: () => void;
+  cooldownDays: number | null; onUpload: () => void; onAnalyze: () => void;
 }) {
-  const disabledByUpload = !resumeUploaded;
   const showRateLimitedText = isRateLimited && resumeUploaded;
   const buttonText = isAnalyzing ? "ANALYZING..." :
-    disabledByUpload ? "UPLOAD RESUME TO ANALYZE" :
+    !resumeUploaded ? "UPLOAD RESUME TO ANALYZE" :
     showRateLimitedText ? `TRY AGAIN IN ${countdownLabel}` :
-    "ANALYZE RESUME →";
+    "RE-ANALYZE RESUME →";
 
   const buttonClassBase = "w-full py-4 mono-label text-[11px] font-bold uppercase tracking-[0.05em] transition-colors";
   const buttonClass = isAnalyzing ? `${buttonClassBase} bg-[#1a1a1a] text-[#666] border-1.5 border-[#2a2a2a] cursor-wait` :
-    disabledByUpload ? `${buttonClassBase} bg-[#1a1a1a] text-[#444] border-1.5 border-[#2a2a2a] cursor-not-allowed` :
     showRateLimitedText ? `${buttonClassBase} bg-[#1a1a1a] text-[#666] border-1.5 border-[#2a2a2a] cursor-not-allowed` :
     `${buttonClassBase} bg-[#FF2D00] text-black border-1.5 border-[#FF2D00] cursor-pointer`;
 
   return (
-    <section className={`brutalist-border-primary p-0 bg-card-dark border border-border-dark ${disabledByUpload ? "text-[#333]" : "text-neutral-beige"}`}>
+    <section className={`brutalist-border-primary p-0 bg-card-dark border border-border-dark ${!resumeUploaded ? "text-[#333]" : "text-neutral-beige"}`}>
       <div className="p-6 space-y-6">
         <div className="flex items-end justify-between gap-4">
           <h3 className={`mono-label text-xs font-bold ${disabledByUpload ? "text-[#333]" : "text-primary"}`}>05 / RESUME INTELLIGENCE</h3>
@@ -381,6 +422,16 @@ function ResumeIntelligenceSection({
                 </div>
               </div>
             )}
+            {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
+              <div>
+                <p className="mono-label text-[10px] text-primary uppercase mb-2">MISSING KEYWORDS</p>
+                <div className="flex flex-wrap gap-2">
+                  {atsResult.missing_keywords.map((kw) => (
+                    <span key={kw} className="mono-label text-[10px] px-2 py-1 border border-[#444] text-[#ddd] uppercase tracking-[0.02em]">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -390,8 +441,8 @@ function ResumeIntelligenceSection({
 
         <button
           type="button"
-          disabled={disabledByUpload || isAnalyzing || showRateLimitedText}
-          onClick={disabledByUpload ? onUpload : undefined}
+          disabled={isAnalyzing || showRateLimitedText}
+          onClick={onAnalyze}
           className={buttonClass}
         >
           {buttonText}
@@ -470,6 +521,9 @@ function TerminalCard({ extractedSkills, atsResult, suggestedSkills }: { extract
                 <p>&gt; CRITICAL_ISSUES: <span className="text-primary">{atsResult.critical_issues.length}</span> DETECTED</p>
               )}
               {suggestedSkills.length > 0 && <p>&gt; SUGGESTED_KEYWORDS: {suggestedSkills.slice(0, 3).join(", ")}...</p>}
+              {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
+                <p>&gt; MISSING_KEYWORDS: <span className="text-primary">{atsResult.missing_keywords.length}</span> SUGGESTED</p>
+              )}
               <p>&gt; STATUS: <span className="text-success-glow">ANALYSIS_COMPLETE</span></p>
             </>
           ) : (

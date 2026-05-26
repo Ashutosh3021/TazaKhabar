@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Job, Notification, User
+from src.db.supabase import supabase_client
 
 logger = logging.getLogger("tazakhabar")
 
@@ -192,19 +193,18 @@ class NotificationService:
         from src.config import settings
 
         # TODO: Uncomment when Supabase is configured:
-        # from src.db.supabase import supabase_client
-        # if supabase_client.is_configured:
-        #     try:
-        #         await supabase_client.send_email(
-        #             to=notification["email"],
-        #             subject=f"New Job Match: {notification['job_title']}",
-        #             body=body,
-        #         )
-        #         logger.info(f"Email sent to {notification['email']}")
-        #         return True
-        #     except Exception as e:
-        #         logger.error(f"Failed to send email: {e}")
-        #         return False
+        if supabase_client.is_email_configured:
+            try:
+                await supabase_client.send_email(
+                    to=notification["email"],
+                    subject=f"New Job Match: {notification['job_title']}",
+                    body=body,
+                )
+                logger.info(f"Email sent to {notification['email']}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send email: {e}")
+                return False
 
         # Supabase not configured - notification is dormant
         logger.info(f"Supabase not configured, notification dormant: {notification}")

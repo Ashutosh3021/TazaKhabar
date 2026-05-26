@@ -13,6 +13,15 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./tazakhabar.db"
     OPENROUTER_API_KEY: str = "your_key_here"
     GROQ_API_KEY: str = "your_key_here"
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_STORAGE_BUCKET: str = "resumes"
+    SUPABASE_EMAIL_FROM: str = ""
+    EMAIL_SMTP_HOST: str = ""
+    EMAIL_SMTP_PORT: int = 465
+    EMAIL_SMTP_USER: str = ""
+    EMAIL_SMTP_PASSWORD: str = ""
+    EMAIL_SMTP_USE_TLS: bool = True
     ALLOWED_ORIGINS: str = (
         "http://localhost:3000,https://tazakhabar.vercel.app,https://*.vercel.app"
     )

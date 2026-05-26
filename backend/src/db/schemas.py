@@ -115,6 +115,7 @@ class ProfileResponse(BaseModel):
     ats_suggested_additions: list[str] = Field(default_factory=list)
     last_analysis_at: str | None = None
     resume_text_length: int | None = None
+    resume_path: str | None = None
     preferences: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -124,6 +125,7 @@ class ProfileUpdateRequest(BaseModel):
     email: str | None = None
     roles: list[str] = Field(default_factory=list)
     experience_level: str = "I"
+    resume_path: str | None = None
     preferences: dict[str, Any] = Field(default_factory=dict)
 
 

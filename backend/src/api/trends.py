@@ -113,3 +113,22 @@ async def trigger_trend_computation(
             "status": "error",
             "error": str(e),
         }
+
+
+@router.get("/predictions")
+async def get_trend_predictions(
+    limit: int = 50,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Return predictions for keywords: {keyword, current, w2, w4, confidence}
+
+    If insufficient data (<8 weeks) serves raw current counts with null predictions.
+    """
+    try:
+        ts = TrendService()
+        preds = await ts.predict_keywords(session)
+        return {"data": preds, "meta": {"total": len(preds)}}
+    except Exception as e:
+        logger.error(f"Error computing predictions: {e}")
+        return {"data": [], "meta": {"total": 0}, "error": str(e)}

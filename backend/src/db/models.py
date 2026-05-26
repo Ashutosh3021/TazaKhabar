@@ -71,6 +71,8 @@ class Trend(Base):
     week_start: Mapped[datetime] = mapped_column(DateTime)
     week_end: Mapped[datetime] = mapped_column(DateTime)
     percentage_change: Mapped[float] = mapped_column(Float, default=0.0)
+    # Direction tag for quick queries: 'booming', 'declining', 'neutral'
+    direction: Mapped[str] = mapped_column(String(20), default="neutral")
 
 
 class User(Base):
@@ -91,6 +93,20 @@ class User(Base):
     last_analysis_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     preferences: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrendPrediction(Base):
+    """Predicted future counts for keywords.
+    Stores simple LR predictions for W+N horizons used for frontend overlays.
+    """
+    __tablename__ = "trend_predictions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    keyword: Mapped[str] = mapped_column(String(100), index=True)
+    horizon_weeks: Mapped[int] = mapped_column(Integer)  # e.g., 2 or 4
+    predicted_count: Mapped[int] = mapped_column(Integer)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    predicted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class RateLimit(Base):

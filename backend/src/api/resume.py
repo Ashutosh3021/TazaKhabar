@@ -21,6 +21,7 @@ from src.services.resume_service import (
     generate_suggested_additions,
     chunk_resume_sections,
 )
+from src.db.supabase import supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,16 @@ async def analyse_resume(
             user = result.scalar_one_or_none()
 
             if user:
+                if supabase_client.is_storage_configured:
+                    try:
+                        object_path = f"resumes/{x_user_id}/{filename}"
+                        await supabase_client.upload_file(object_path, content, content_type)
+                        user.resume_path = object_path
+                        print(f">>> [API:POST /api/resume/analyse] Uploaded resume to Supabase: {object_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to upload resume to Supabase: {e}")
+                else:
+                    print(">>> [API:POST /api/resume/analyse] Supabase storage not configured, skipping upload")
                 user.resume_text = text
                 user.ats_score = ats_result["score"]
                 user.ats_critical_issues = ats_result["critical_issues"]

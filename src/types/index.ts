@@ -29,6 +29,8 @@ export interface Trend {
   skill: string;
   percentage: number; // 0-100
   weeklyChange: number; // +/- percentage points
+  direction?: "booming" | "declining" | "neutral";
+  prediction?: { keyword: string; current: number; w2: number | null; w4: number | null; confidence: number };
 }
 
 export interface Signal {

@@ -4,13 +4,15 @@ Trend service for keyword frequency counting and week-over-week analysis.
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, List
 
+import numpy as np
+from sklearn.linear_model import LinearRegression
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import async_session
-from src.db.models import Job, News, Trend
+from src.db.models import Job, News, Trend, TrendPrediction
 
 logger = logging.getLogger(__name__)
 
@@ -236,9 +238,18 @@ async def compute_keyword_frequencies(session: AsyncSession | None = None) -> li
             )
             existing_trend = existing.scalar_one_or_none()
             
+            # Determine direction tag per spec (>20% booming, <-20% declining)
+            if percentage_change > 20:
+                direction = "booming"
+            elif percentage_change < -20:
+                direction = "declining"
+            else:
+                direction = "neutral"
+
             if existing_trend:
                 existing_trend.count = count
                 existing_trend.percentage_change = percentage_change
+                existing_trend.direction = direction
             else:
                 new_trend = Trend(
                     keyword=keyword,
@@ -246,6 +257,7 @@ async def compute_keyword_frequencies(session: AsyncSession | None = None) -> li
                     week_start=week_start,
                     week_end=week_end,
                     percentage_change=percentage_change,
+                    direction=direction,
                 )
                 session.add(new_trend)
             
@@ -309,9 +321,9 @@ async def get_trends(session: AsyncSession, limit: int = 20) -> list[dict[str, A
         )
         has_prev_data = has_prev_data.scalars().first() is not None
         
-        # Lower threshold from 20% to 10% for better data display
-        booming = [t for t in trends if t.percentage_change > 10]
-        declining = [t for t in trends if t.percentage_change < -10]
+        # Use spec thresholds: >20% booming, <-20% declining
+        booming = [t for t in trends if t.percentage_change > 20]
+        declining = [t for t in trends if t.percentage_change < -20]
         
         # If no previous data, use count-based percentages instead of change-based
         if not has_prev_data and (booming or declining):
@@ -422,3 +434,68 @@ class TrendService:
     async def get_trending(self, session: AsyncSession, limit: int = 20) -> list[dict[str, Any]]:
         """Get trending keywords."""
         return await get_trends(session, limit)
+
+    async def predict_keywords(self, session: AsyncSession, keywords: List[str] | None = None) -> list[dict[str, Any]]:
+        """Predict W+2 and W+4 counts for provided keywords.
+
+        Uses a simple LinearRegression on weekly counts if >=8 weeks of data are available.
+        Stores predictions in TrendPrediction table and returns prediction dicts.
+        """
+        results: list[dict[str, Any]] = []
+
+        # Determine candidate keywords
+        if keywords is None:
+            # Get distinct keywords from latest week
+            now = datetime.utcnow()
+            week_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start = week_end - timedelta(days=7)
+            q = await session.execute(select(Trend.keyword).where(Trend.week_start == week_start))
+            keywords = [r[0] for r in q.all()]
+
+        for kw in keywords:
+            # Fetch up to 12 weeks of historical counts for keyword
+            q = await session.execute(select(Trend).where(Trend.keyword == kw).order_by(Trend.week_start.asc()))
+            rows = q.scalars().all()
+            counts = [r.count for r in rows]
+            weeks = list(range(1, len(counts) + 1))
+
+            current = counts[-1] if counts else 0
+
+            pred_w2 = None
+            pred_w4 = None
+            confidence = 0.0
+
+            if len(counts) >= 8:
+                # Fit LinearRegression on week index -> count
+                X = np.array(weeks).reshape(-1, 1)
+                y = np.array(counts)
+                try:
+                    model = LinearRegression()
+                    model.fit(X, y)
+                    # Predict W+2 and W+4 (relative to last week index)
+                    last_week = weeks[-1]
+                    pred_w2 = int(round(model.predict(np.array([[last_week + 2]]))[0]))
+                    pred_w4 = int(round(model.predict(np.array([[last_week + 4]]))[0]))
+                    confidence = float(model.score(X, y))
+                except Exception:
+                    pred_w2 = None
+                    pred_w4 = None
+                    confidence = 0.0
+
+            # Store predictions if available
+            if pred_w2 is not None:
+                session.add(TrendPrediction(keyword=kw, horizon_weeks=2, predicted_count=pred_w2, confidence=confidence))
+            if pred_w4 is not None:
+                session.add(TrendPrediction(keyword=kw, horizon_weeks=4, predicted_count=pred_w4, confidence=confidence))
+
+            # Build result
+            results.append({
+                "keyword": kw,
+                "current": int(current),
+                "w2": pred_w2,
+                "w4": pred_w4,
+                "confidence": confidence,
+            })
+
+        await session.commit()
+        return results

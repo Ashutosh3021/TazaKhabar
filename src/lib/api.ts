@@ -161,6 +161,16 @@ export async function fetchTrends(params?: {
 }
 
 /**
+ * Fetch trend predictions (W+2, W+4) for keywords.
+ */
+export async function fetchTrendPredictions(): Promise<{ data: Array<{ keyword: string; current: number; w2: number | null; w4: number | null; confidence: number }>; meta: Record<string, unknown> }> {
+  const url = `${API_BASE}/api/trends/predictions`;
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!res.ok) throw new Error(`Failed to fetch trend predictions: ${res.status}`);
+  return res.json();
+}
+
+/**
  * Trigger report refresh (swap Report 2 → Report 1).
  */
 export async function triggerRefresh(): Promise<{ status: string; radar_new_count: number; feed_new_count: number }> {

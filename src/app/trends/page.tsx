@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { fetchTrends, fetchObservation } from "@/lib/api";
+import { fetchTrends, fetchObservation, fetchTrendPredictions } from "@/lib/api";
 import type { Trend } from "@/types";
 
 export default function TrendsPage() {
@@ -14,12 +14,24 @@ export default function TrendsPage() {
     let cancelled = false;
     async function load() {
       try {
-        const [trendsRes, obsRes] = await Promise.all([
+        const [trendsRes, obsRes, predsRes] = await Promise.all([
           fetchTrends({ limit: 20 }),
           fetchObservation(),
+          fetchTrendPredictions(),
         ]);
+
+        // Merge predictions into trends by skill/keyword (case-insensitive)
+        const predsMap = new Map<string, any>();
+        predsRes.data.forEach((p: any) => predsMap.set(p.keyword.toLowerCase(), p));
+
+        const merged = trendsRes.data.map((t) => {
+          const key = (t.skill || t.skill || '').toLowerCase();
+          const p = predsMap.get(key);
+          return { ...t, prediction: p };
+        });
+
         if (!cancelled) {
-          setTrends(trendsRes.data);
+          setTrends(merged);
           setObservation(obsRes);
         }
       } catch {
@@ -140,6 +152,10 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
 }
 
 function TrendBarRow({ t }: { t: Trend }) {
+  const isBooming = t.weeklyChange > 20 || (t.direction === "booming");
+  const isDeclining = t.weeklyChange < -20 || (t.direction === "declining");
+  const barColor = isDeclining ? "bg-neutral" : isBooming ? "bg-red-500" : "bg-primary";
+
   return (
     <div className="flex items-center gap-4 border border-border-dark bg-card-dark p-4">
       <div className="w-[180px] shrink-0">
@@ -147,8 +163,16 @@ function TrendBarRow({ t }: { t: Trend }) {
       </div>
       <div className="flex-1">
         <div className="h-3 bg-neutral-border relative overflow-hidden">
-          <div className="h-full bg-primary" style={{ width: `${t.percentage}%` }} />
+          <div className={`h-full ${barColor}`} style={{ width: `${t.percentage}%` }} />
         </div>
+        {/* Prediction overlay */}
+        {t.prediction && (
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-dim-text">
+            <div>W+2: {t.prediction.w2 ?? "—"}</div>
+            <div>W+4: {t.prediction.w4 ?? "—"}</div>
+            <div className="ml-auto">conf: {(t.prediction.confidence ?? 0).toFixed(2)}</div>
+          </div>
+        )}
       </div>
       <div className="w-[90px] text-right">
         <p className="mono-label text-[11px] text-primary">{t.percentage}%</p>

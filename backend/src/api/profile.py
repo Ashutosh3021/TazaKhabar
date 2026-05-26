@@ -61,6 +61,7 @@ async def get_profile(
         ats_suggested_additions=user.ats_suggested_additions or [],
         last_analysis_at=last_analysis_str,
         resume_text_length=len(user.resume_text) if user.resume_text else None,
+        resume_path=user.resume_path,
         preferences=user.preferences or {},
     )
 
@@ -85,25 +86,23 @@ async def update_profile(
         )
 
     async with async_session() as session:
-        # Upsert user
         stmt = select(User).where(User.id == x_user_id)
         result = await session.execute(stmt)
         user = result.scalar_one_or_none()
 
         if user is None:
-            # Create new user
             user = User(
                 id=x_user_id,
                 name=data.name or "Anonymous",
                 email=data.email,
                 roles=data.roles,
                 experience_level=data.experience_level,
+                resume_path=data.resume_path,
                 preferences=data.preferences or {},
             )
             session.add(user)
             print(f">>> [API:POST /api/profile] Created new user")
         else:
-            # Update existing
             if data.name is not None:
                 user.name = data.name
             if data.email is not None:
@@ -112,15 +111,15 @@ async def update_profile(
                 user.roles = data.roles
             if data.experience_level is not None:
                 user.experience_level = data.experience_level
+            if data.resume_path is not None:
+                user.resume_path = data.resume_path
             if data.preferences is not None:
                 user.preferences = data.preferences
             print(f">>> [API:POST /api/profile] Updated user")
 
         await session.commit()
-        # Refresh to get latest state
         await session.refresh(user)
 
-        # Trigger embedding regeneration on profile save
         try:
             import asyncio
             from src.services.embedding_service import generate_user_embedding
@@ -157,5 +156,6 @@ async def update_profile(
             ats_suggested_additions=user.ats_suggested_additions or [],
             last_analysis_at=last_analysis_str,
             resume_text_length=len(user.resume_text) if user.resume_text else None,
+            resume_path=user.resume_path,
             preferences=user.preferences or {},
         )

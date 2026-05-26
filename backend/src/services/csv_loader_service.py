@@ -275,9 +275,10 @@ if __name__ == "__main__":
             for job in stats['sample_jobs']:
                 print(f"  - {job['title']} @ {job['company']}")
         
-        # Load jobs
-        print(f"\nLoading first 100 jobs into database...")
-        result = await load_jobs_from_csv(limit=100, clear_existing=True)
+        # Load jobs (load all rows; previously limited to 100)
+        print(f"\nLoading all jobs into database...")
+        result = await load_jobs_from_csv(limit=None, clear_existing=True)
+        # BUG FIX [L1]: removed hardcoded limit to load full CSV instead of only first 100 rows
         print(f"Result: {result['success']} jobs loaded, {len(result['errors'])} errors")
         
     asyncio.run(main())

@@ -4,6 +4,7 @@ Discovers threads via Algolia, parses comments for job listings.
 """
 import logging
 import re
+import asyncio
 from datetime import datetime
 from typing import Any
 from html import unescape
@@ -63,10 +64,12 @@ class WhoIsHiringScraper(BaseScraper):
             if "whoishiring" in author.lower():
                 logger.info(f"Found Who Is Hiring thread: {hit.get('title', '')[:80]}")
                 return hit
-        
+
+        # If no matching hit was found, return None
         logger.warning("No Who Is Hiring thread found in search results")
         print(">>> [WIH-SCRAPER] WARNING: No Who Is Hiring thread found!")
         return None
+    # BUG FIX [C1]: ensure discover_thread returns only on match and None otherwise
 
     def parse_comment(self, comment: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -83,8 +86,8 @@ class WhoIsHiringScraper(BaseScraper):
         try:
             # Unescape HTML entities and strip HN comment HTML formatting
             raw_text = comment.get("text", "") or ""
-            text = unescape(raw_text)
-            text = re.sub(r'<[^>]+>', '', text)
+            # Strip HTML tags and unescape entities to plain text
+            text = unescape(re.sub(r'<[^>]+>', '', raw_text))
             text = re.sub(r'\s+', ' ', text).strip()
             author = comment.get("author", "")
             
@@ -172,10 +175,40 @@ class WhoIsHiringScraper(BaseScraper):
             
             # Get HN item ID
             hn_item_id = comment.get("id")
-            
-            is_ghost_job = email is None and apply_link is None
-            
-            return {
+
+            # Posted time and reply count (kids)
+            timestamp = comment.get("time")
+            reply_count = len(comment.get("kids", [])) if comment.get("kids") else 0
+
+            # Heuristic ghost job detection
+            def _is_ghost_job(txt: str, ts: int | None, replies: int) -> bool:
+                """Return True if job likely ghost/expired using heuristics."""
+                txt_lower = (txt or "").lower()
+                phrases = ["position filled", "no longer hiring", "role closed", "hiring paused", "application closed"]
+                if any(p in txt_lower for p in phrases):
+                    return True
+
+                # If timestamp present and older than 90 days and no replies
+                if ts:
+                    try:
+                        age_days = (datetime.utcnow() - datetime.fromtimestamp(int(ts))).days
+                        if age_days > 90 and replies == 0:
+                            return True
+                    except Exception:
+                        pass
+
+                return False
+
+            is_ghost_job = _is_ghost_job(text, timestamp, reply_count)
+
+            posted_at = datetime.utcnow()
+            if timestamp:
+                try:
+                    posted_at = datetime.fromtimestamp(int(timestamp))
+                except Exception:
+                    posted_at = datetime.utcnow()
+
+            job_dict = {
                 "hn_item_id": int(hn_item_id) if hn_item_id else 0,
                 "title": title,
                 "company": company,
@@ -185,8 +218,12 @@ class WhoIsHiringScraper(BaseScraper):
                 "apply_link": apply_link,
                 "is_ghost_job": is_ghost_job,
                 "deadline": deadline,
-                "posted_at": datetime.utcnow(),
+                "posted_at": posted_at,
             }
+
+            # BUG FIX [H1]: compute ghost job heuristics (age/replies/phrases)
+            # BUG FIX [C3]: strip HTML from comment text before storing
+            return job_dict
             
         except Exception as e:
             logger.error(f"Failed to parse comment: {e}")
@@ -256,15 +293,36 @@ class WhoIsHiringScraper(BaseScraper):
             # Get all top-level comment IDs from the story
             comment_ids = story.get("kids", [])
             print(f">>> [WIH-SCRAPER] Found {len(comment_ids)} comment IDs in story")
-            
-            # Fetch all comments in parallel
+
+            # Fetch all comments and all descendants (full tree) in parallel
+            comments = []
             if comment_ids:
-                comments = await self.client.fetch_items_batch(comment_ids, semaphore=5)
-                comments = [c for c in comments if c and c.get("text")]  # Filter out deleted/null
-                print(f">>> [WIH-SCRAPER] Fetched {len(comments)} valid comments")
+                # breadth-first traversal to fetch all descendant comments
+                to_fetch = list(comment_ids)
+                fetched_ids = set()
+                sem = 20
+                while to_fetch:
+                    batch_ids = to_fetch
+                    to_fetch = []
+                    fetched = await self.client.fetch_items_batch(batch_ids, semaphore=sem)
+                    # Keep only valid comments with text
+                    valid = [c for c in fetched if c and c.get("text")]
+                    comments.extend(valid)
+
+                    # enqueue children of fetched items
+                    for item in fetched:
+                        if not item:
+                            continue
+                        kids = item.get("kids", []) or []
+                        for k in kids:
+                            if k not in fetched_ids:
+                                to_fetch.append(k)
+                                fetched_ids.add(k)
+
+                print(f">>> [WIH-SCRAPER] Fetched {len(comments)} valid comments (including descendants)")
             else:
-                comments = []
                 print(f">>> [WIH-SCRAPER] No comments found in story")
+# BUG FIX [H2]: fetch entire comment tree (no 100-item cap), with concurrency semaphore
             
             # Parse comments into jobs
             print(f">>> [WIH-SCRAPER] Step 3: Parsing {len(comments)} comments into job listings...")

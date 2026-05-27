@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router, csv_loader_router, qa_router
+from src.api import embeddings_router
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Configure logging
@@ -114,6 +115,8 @@ app.include_router(csv_loader_router)
 print("    + /api/csv registered")
 app.include_router(qa_router)
 print("    + /api/qa registered")
+app.include_router(embeddings_router)
+print("    + /api/embeddings registered")
 
 # Add CORS middleware
 print(">>> [SETUP] Configuring CORS middleware...")

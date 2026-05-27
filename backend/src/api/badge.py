@@ -23,17 +23,17 @@ async def get_badge(
     Get badge counts for new items since last scrape cycle.
     
     FRESH-04: Lightweight endpoint for 5-minute polling.
-    Returns only {radar_new_count, feed_new_count}.
+    Returns only {new_jobs, new_news}.
     """
     try:
         print(f"\n>>> [API:GET /api/badge] Request received (5-min poll)")
         counts = await get_badge_counts(session)
-        radar = counts.get("radar_new_count", 0)
-        feed = counts.get("feed_new_count", 0)
-        print(f">>> [API:GET /api/badge] Response: radar={radar}, feed={feed}")
+        jobs = counts.get("new_jobs", 0)
+        news = counts.get("new_news", 0)
+        print(f">>> [API:GET /api/badge] Response: new_jobs={jobs}, new_news={news}")
         return BadgeResponse(
-            radar_new_count=radar,
-            feed_new_count=feed,
+            new_jobs=jobs,
+            new_news=news,
         )
     except Exception as e:
         print(f">>> [API:GET /api/badge] ERROR: {e}")
@@ -41,4 +41,4 @@ async def get_badge(
         print(f">>> [API:GET /api/badge] TRACE: {traceback.format_exc()}")
         logger.error(f"Error fetching badge counts: {e}")
         # Return zeros on error to avoid breaking the frontend
-        return BadgeResponse(radar_new_count=0, feed_new_count=0)
+        return BadgeResponse(new_jobs=0, new_news=0)

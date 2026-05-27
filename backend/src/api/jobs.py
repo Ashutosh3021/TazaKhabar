@@ -4,7 +4,7 @@ Job feed REST API endpoint.
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,6 +149,8 @@ async def get_jobs(
     startup_only: bool = Query(default=False),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    personalize: bool = Query(default=False),
+    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[JobResponse]:
     """
@@ -175,60 +177,126 @@ async def get_jobs(
             base_filter = base_filter & or_(*remote_conditions)
             print(f"    Filter: remote jobs (location matches: {REMOTE_KEYWORDS})")
 
-        # Build count query
-        count_query = select(func.count(Job.id)).where(base_filter)
+        # Apply role filter at SQL level (BUG FIX [M10])
+        role_filter_applied = False
+        role_conditions = []
+        if roles:
+            for r in roles:
+                role_conditions.append(Job.role.ilike(f"%{r}%"))
+            if role_conditions:
+                base_filter = base_filter & or_(*role_conditions)
+                role_filter_applied = True
+                print(f"    Applied SQL role filter: {roles}")
+
+        # Build count query AFTER all filters (so has_more is correct)
+        count_query = select(func.count()).select_from(select(Job).where(base_filter).subquery())
         count_result = await db.execute(count_query)
         db_total = count_result.scalar() or 0
-        print(f"    DB total count: {db_total} jobs")
+        print(f"    DB total count after filters: {db_total} jobs")
 
-        # Build data query with ordering and pagination
-        query = (
-            select(Job)
-            .where(base_filter)
-            .order_by(Job.scraped_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+        # Personalization path
+        personalized = False
+        if personalize and x_user_id:
+            try:
+                from src.db.models import Embedding
+                from src.services.embedding_service import cosine_similarity_bytes
 
-        result = await db.execute(query)
-        rows = result.scalars().all()
-        print(f"    DB returned: {len(rows)} jobs")
+                # Fetch user embedding
+                user_emb_row = await db.execute(
+                    select(Embedding).where(
+                        Embedding.item_type == "user_profile",
+                        Embedding.item_id == x_user_id,
+                    )
+                )
+                user_emb = user_emb_row.scalar_one_or_none()
 
-        # Apply role filter in Python (OR within roles)
-        # NOTE: SQL applied skip/limit before this. For correct has_more, use db_total
-        # (all rows matching DB filters, before Python filtering). This means when role
-        # filters are applied, has_more may overcount — acceptable for MVP.
-        if roles:
-            filtered = [r for r in rows if any(_job_matches_role(r.tags or [], r.role, role) for role in roles)]
-            print(f"    After role filter ({roles}): {len(filtered)} jobs")
-        else:
-            filtered = rows
+                if user_emb and user_emb.embedding:
+                    # Candidate selection (recent up to 200)
+                    candidate_query = select(Job.id).where(base_filter).order_by(Job.scraped_at.desc()).limit(200)
+                    cand_res = await db.execute(candidate_query)
+                    candidate_ids = [r[0] for r in cand_res.all()]
+
+                    if candidate_ids:
+                        emb_rows = await db.execute(
+                            select(Embedding).where(
+                                Embedding.item_type == "job",
+                                Embedding.item_id.in_(candidate_ids),
+                            )
+                        )
+                        emb_list = emb_rows.scalars().all()
+                        emb_map = {e.item_id: e.embedding for e in emb_list}
+
+                        # Score candidates
+                        scored = []
+                        for jid in candidate_ids:
+                            emb = emb_map.get(jid)
+                            score = cosine_similarity_bytes(user_emb.embedding, emb) if emb is not None else 0.0
+                            scored.append((jid, score))
+
+                        scored.sort(key=lambda x: x[1], reverse=True)
+
+                        # Paginate scored list
+                        total_scored = len(scored)
+                        page_slice = scored[skip: skip + limit]
+                        page_ids = [str(jid) for jid, _ in page_slice]
+                        has_more = (skip + limit) < total_scored
+
+                        # Fetch jobs by page_ids preserving order
+                        if page_ids:
+                            q = select(Job).where(Job.id.in_(page_ids))
+                            rows_res = await db.execute(q)
+                            rows_map = {r.id: r for r in rows_res.scalars().all()}
+                            rows = [rows_map[jid] for jid in page_ids if jid in rows_map]
+                        else:
+                            rows = []
+
+                        personalized = True
+                    else:
+                        # No candidates found, fall back to normal SQL pagination
+                        personalized = False
+                else:
+                    personalized = False
+            except Exception as e:
+                logger.warning(f"Personalization failed, falling back to default ordering: {e}")
+                personalized = False
+
+        if not personalize or not personalized:
+            # Build data query with ordering and pagination
+            query = (
+                select(Job)
+                .where(base_filter)
+                .order_by(Job.scraped_at.desc())
+                .offset(skip)
+                .limit(limit)
+            )
+
+            result = await db.execute(query)
+            rows = result.scalars().all()
+            has_more = (skip + limit) < db_total
 
         # Apply startup filter (deferred — requires funding_stage column)
         if startup_only:
             print(f"    WARNING: startup_only filter requires 'funding_stage' column (not yet added)")
 
-        # has_more uses db_total (correct for unfiltered results; may overcount with role filters)
-        jobs_data = [_row_to_response(r) for r in filtered]
-        has_more = (skip + limit) < db_total
-        
-        print(f">>> [API:GET /api/jobs] Response: {len(jobs_data)} jobs (total: {db_total}, has_more: {has_more})")
+        jobs_data = [_row_to_response(r) for r in rows]
 
-        return PaginatedResponse(
-            data=jobs_data,
-            meta=PaginationMeta(
-                total=db_total,
-                skip=skip,
-                limit=limit,
-                has_more=has_more,
-            ),
+        # Include personalization flag in meta for client awareness (BUG FIX [M10])
+        meta_obj = PaginationMeta(
+            total=db_total,
+            skip=skip,
+            limit=limit,
+            has_more=has_more,
         )
+        # Return as dict to allow adding 'personalized' flag into meta
+        return {
+            "data": jobs_data,
+            "meta": {**meta_obj.__dict__, "personalized": bool(personalized)},
+        }
 
     except Exception as e:
         print(f">>> [API:GET /api/jobs] ERROR: {e}")
         import traceback
         print(f">>> [API:GET /api/jobs] TRACE: {traceback.format_exc()}")
-        logger.error(f"Error fetching jobs: {e}")
         raise HTTPException(
             status_code=500,
             detail={"error": "Failed to fetch jobs", "code": "DB_ERROR", "detail": str(e)},

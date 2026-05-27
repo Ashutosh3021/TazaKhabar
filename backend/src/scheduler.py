@@ -42,6 +42,11 @@ async def _compute_trends_with_observation():
             declining_keywords=declining[:10],
         )
 
+        # BUG FIX [M7]: guard against None observation (LLM rate-limited) before inserting
+        if not observation_text:
+            logger.warning("LLM rate-limited or returned None — skipping Observation insert this cycle")
+            return
+
         # Step 4: Save to Observation table
         from datetime import datetime, timedelta
         week_end = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -104,6 +109,20 @@ async def _show_hn_job():
     return await _run_scraper_with_notifications(ShowHNScraper().run)
 
 
+async def _backfill_embeddings_job():
+    """Daily embeddings backfill job."""
+    from src.services.embedding_service import backfill_missing_embeddings
+    from src.db.database import async_session
+
+    print('>>> [JOB] Running daily embeddings backfill...')
+    async with async_session() as session:
+        try:
+            result = await backfill_missing_embeddings(session)
+            print(f">>> [JOB] Embeddings backfill completed: {result}")
+        except Exception as e:
+            print(f">>> [JOB] Embeddings backfill failed: {e}")
+
+
 def start_scheduler() -> None:
     """Start the APScheduler with all configured jobs."""
     print("\n>>> [SCHEDULER] Registering scraper jobs...")
@@ -138,25 +157,36 @@ def start_scheduler() -> None:
     )
     print("    + [JOB-3] Top Stories -> runs every 2 hours (Firebase)")
     
-    # Ask HN: every 4 hours
+    # Ask HN: every 2 hours
     scheduler.add_job(
         _ask_hn_job,
-        trigger=CronTrigger(hour="*/4"),
+        trigger=CronTrigger(hour="*/2"),
         id="ask_hn",
         name="Ask HN Scraper",
         replace_existing=True,
     )
-    print("    + [JOB-4] Ask HN -> runs every 4 hours (Firebase)")
+    print("    + [JOB-4] Ask HN -> runs every 2 hours (Firebase)")
     
-    # Show HN: every 6 hours
+    # Show HN: every 2 hours
     scheduler.add_job(
         _show_hn_job,
-        trigger=CronTrigger(hour="*/6"),
+        trigger=CronTrigger(hour="*/2"),
         id="show_hn",
         name="Show HN Scraper",
         replace_existing=True,
     )
-    print("    + [JOB-5] Show HN -> runs every 6 hours (Firebase)")
+    print("    + [JOB-5] Show HN -> runs every 2 hours (Firebase)")
+
+    # Daily embeddings backfill: run once per day at 03:00 UTC
+    # BUG FIX [M9]: schedule idempotent embedding backfill to ensure coverage
+    scheduler.add_job(
+        _backfill_embeddings_job,
+        trigger=CronTrigger(hour="3"),
+        id="embeddings_backfill",
+        name="Embeddings Backfill",
+        replace_existing=True,
+    )
+    print("    + [JOB-6] Embeddings Backfill -> runs daily at 03:00 UTC")
     
     scheduler.start()
     job_count = len(scheduler.get_jobs())

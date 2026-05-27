@@ -6,11 +6,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from src.api.deps import get_db
 from src.db.schemas import PaginatedResponse, PaginationMeta
-from src.services.trend_service import compute_keyword_frequencies, get_trends, TrendService, TECH_KEYWORDS
+from src.services.trend_service import compute_keyword_frequencies, get_trends, TrendService, TECH_KEYWORDS, run_predictions_backfill
 from src.db.database import async_session
+from src.db.models import Observation
 
 logger = logging.getLogger(__name__)
 
@@ -77,19 +79,25 @@ def _get_sample_trends() -> list[dict]:
 
 
 @router.get("/observation")
-async def get_trend_observation() -> dict:
+async def get_trend_observation(session: AsyncSession = Depends(get_db)) -> dict:
     """
     Get LLM-written paragraph about current trends.
-    
-    TRND-08: Phase 2 — for now returns static placeholder text.
+
+    Returns the most recent Observation.text stored by the scheduler. If none exists,
+    returns a clear message indicating no observation has been generated yet.
+    BUG FIX [M6]: read Observation from DB instead of returning placeholder.
     """
-    return {
-        "data": {
-            "text": "Trends are being computed. Check back after your first scrape cycle. "
-                    "The analysis will provide insights into hiring velocity, skill demand shifts, "
-                    "and market signals based on HackerNews data."
-        }
-    }
+    try:
+        result = await session.execute(
+            select(Observation).order_by(Observation.generated_at.desc()).limit(1)
+        )
+        latest = result.scalar_one_or_none()
+        if not latest:
+            return {"observation": None, "message": "No observation generated yet. Run the scheduler."}
+        return {"observation": latest.text, "generated_at": latest.generated_at.isoformat()}
+    except Exception as e:
+        logger.error(f"Error fetching observation: {e}")
+        return {"observation": None, "message": "Error fetching observation."}
 
 
 @router.post("/compute")

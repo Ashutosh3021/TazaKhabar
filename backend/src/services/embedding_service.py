@@ -4,13 +4,16 @@ Uses sentence-transformers (all-MiniLM-L6-v2) for embedding generation.
 """
 import logging
 import uuid
+import asyncio
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.models import Job, News, Embedding
 
 from src.db.database import async_session
-from src.db.models import Embedding
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +206,74 @@ async def embed_job_item(
         await session.commit()
 
     logger.info(f"Generated and stored content embedding for job_id={job_id}")
+
+
+async def backfill_missing_embeddings(session: AsyncSession) -> dict:
+    """
+    Find News and Job items missing embeddings and generate them with limited concurrency.
+
+    Returns:
+        dict with counts: {"news_queued": n, "jobs_queued": m}
+
+    BUG FIX [M9]: provide idempotent embedding backfill and limited concurrency.
+    """
+    # Fetch existing embedding ids for news and jobs
+    existing_news_res = await session.execute(select(Embedding.item_id).where(Embedding.item_type == "news"))
+    existing_news_ids = {r[0] for r in existing_news_res.all()}
+
+    existing_job_res = await session.execute(select(Embedding.item_id).where(Embedding.item_type == "job"))
+    existing_job_ids = {r[0] for r in existing_job_res.all()}
+
+    # Find missing news
+    if existing_news_ids:
+        news_stmt = select(News).where(~News.id.in_(existing_news_ids))
+    else:
+        news_stmt = select(News)
+    news_res = await session.execute(news_stmt)
+    missing_news = news_res.scalars().all()
+
+    # Find missing jobs
+    if existing_job_ids:
+        job_stmt = select(Job).where(~Job.id.in_(existing_job_ids))
+    else:
+        job_stmt = select(Job)
+    job_res = await session.execute(job_stmt)
+    missing_jobs = job_res.scalars().all()
+
+    news_queued = 0
+    jobs_queued = 0
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def _wrap_embed_news(n_id, title, summary, n_type):
+        async with semaphore:
+            try:
+                await embed_news_item(n_id, title, summary, n_type)
+            except Exception:
+                logger.exception(f"Failed to embed news {n_id}")
+
+    async def _wrap_embed_job(j_id, title, company, location):
+        async with semaphore:
+            try:
+                await embed_job_item(j_id, title, company, location)
+            except Exception:
+                logger.exception(f"Failed to embed job {j_id}")
+
+    tasks = []
+    for n in missing_news:
+        tasks.append(asyncio.create_task(_wrap_embed_news(n.id, getattr(n, "title", ""), getattr(n, "summary", None), getattr(n, "type", "news"))))
+        news_queued += 1
+
+    for j in missing_jobs:
+        tasks.append(asyncio.create_task(_wrap_embed_job(j.id, getattr(j, "title", ""), getattr(j, "company", ""), getattr(j, "location", None))))
+        jobs_queued += 1
+
+    if tasks:
+        # Wait for all scheduled embedding tasks to complete
+        await asyncio.gather(*tasks)
+
+    logger.info(f"Backfilled embeddings: news_queued={news_queued}, jobs_queued={jobs_queued}")
+    return {"news_queued": news_queued, "jobs_queued": jobs_queued}
 
 
 # ---------------------------------------------------------------------------

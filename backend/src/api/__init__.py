@@ -12,6 +12,7 @@ from src.api.profile import router as profile_router
 from src.api.digest import router as digest_router
 from src.api.csv_loader import router as csv_loader_router
 from src.api.qa import router as qa_router
+from src.api.embeddings import router as embeddings_router
 
 __all__ = [
     "jobs_router",
@@ -25,4 +26,5 @@ __all__ = [
     "digest_router",
     "csv_loader_router",
     "qa_router",
+    "embeddings_router",
 ]

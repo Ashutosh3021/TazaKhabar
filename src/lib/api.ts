@@ -113,7 +113,7 @@ export async function fetchNews(params?: {
 /**
  * Fetch badge counts (new items since last scrape).
  */
-export async function fetchBadgeCounts(): Promise<{ radar_new_count: number; feed_new_count: number }> {
+export async function fetchBadgeCounts(): Promise<{ new_jobs: number; new_news: number }> {
   try {
     const url = `${API_BASE}/api/badge`;
     const res = await fetch(url, {
@@ -127,11 +127,11 @@ export async function fetchBadgeCounts(): Promise<{ radar_new_count: number; fee
 
     const json = await res.json();
     return {
-      radar_new_count: json.radar_new_count ?? 0,
-      feed_new_count: json.feed_new_count ?? 0,
+      new_jobs: json.new_jobs ?? 0,
+      new_news: json.new_news ?? 0,
     };
   } catch {
-    return { radar_new_count: 0, feed_new_count: 0 };
+    return { new_jobs: 0, new_news: 0 };
   }
 }
 
@@ -173,7 +173,7 @@ export async function fetchTrendPredictions(): Promise<{ data: Array<{ keyword: 
 /**
  * Trigger report refresh (swap Report 2 → Report 1).
  */
-export async function triggerRefresh(): Promise<{ status: string; radar_new_count: number; feed_new_count: number }> {
+export async function triggerRefresh(): Promise<{ status: string; new_jobs: number; new_news: number }> {
   const url = `${API_BASE}/api/refresh`;
 
   const res = await fetch(url, {
@@ -188,8 +188,8 @@ export async function triggerRefresh(): Promise<{ status: string; radar_new_coun
   const json = await res.json();
   return {
     status: json.status ?? "swapped",
-    radar_new_count: json.radar_new_count ?? 0,
-    feed_new_count: json.feed_new_count ?? 0,
+    new_jobs: json.new_jobs ?? 0,
+    new_news: json.new_news ?? 0,
   };
 }
 

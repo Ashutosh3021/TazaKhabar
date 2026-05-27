@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
 from src.db.schemas import RefreshResponse
-from src.services.report_service import swap_reports
+from src.services.report_service import advance_report_cycle
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +26,18 @@ async def trigger_refresh(
     Container is empty and ready for next scrape cycle.
     """
     try:
+        # BUG FIX [M1]: wired advance_report_cycle into refresh endpoint
         print(f"\n>>> [API:POST /api/refresh] Request received - triggering report swap")
-        result = await swap_reports(session)
+        result = await advance_report_cycle(session)
         status = result.get("status", "swapped")
-        radar = result.get("radar_new_count", 0)
-        feed = result.get("feed_new_count", 0)
-        print(f">>> [API:POST /api/refresh] Swap complete: status={status}, radar={radar}, feed={feed}")
+        new_jobs = result.get("new_jobs", 0)
+        new_news = result.get("new_news", 0)
+        print(f">>> [API:POST /api/refresh] Swap complete: status={status}, new_jobs={new_jobs}, new_news={new_news}")
         print(f">>> [API:POST /api/refresh] Badge counts reset to 0. Ready for next scrape cycle.")
         return RefreshResponse(
             status=status,
-            radar_new_count=radar,
-            feed_new_count=feed,
+            new_jobs=new_jobs,
+            new_news=new_news,
         )
     except Exception as e:
         print(f">>> [API:POST /api/refresh] ERROR: {e}")
@@ -45,6 +46,6 @@ async def trigger_refresh(
         logger.error(f"Error during refresh: {e}")
         return RefreshResponse(
             status="error",
-            radar_new_count=0,
-            feed_new_count=0,
+            new_jobs=0,
+            new_news=0,
         )

@@ -75,15 +75,15 @@ class JobFilterParams(BaseModel):
 
 class BadgeResponse(BaseModel):
     """Badge counter response for new items since last scrape."""
-    radar_new_count: int = Field(default=0, description="New job postings since last refresh")
-    feed_new_count: int = Field(default=0, description="New news items since last refresh")
+    new_jobs: int = Field(default=0, description="New job postings since last refresh")
+    new_news: int = Field(default=0, description="New news items since last refresh")
 
 
 class RefreshResponse(BaseModel):
     """Report swap/refresh response."""
     status: str = Field(default="swapped", description="Status of the refresh operation")
-    radar_new_count: int = Field(default=0, description="New job count after swap")
-    feed_new_count: int = Field(default=0, description="New news count after swap")
+    new_jobs: int = Field(default=0, description="New job count after swap")
+    new_news: int = Field(default=0, description="New news count after swap")
 
 
 class ObservationResponse(BaseModel):

@@ -499,3 +499,49 @@ class TrendService:
 
         await session.commit()
         return results
+
+
+    async def run_predictions_backfill(session: AsyncSession) -> int:
+        """
+        One-off backfill for trend predictions created after Phase 1 migration.
+
+        Steps:
+          1. Get distinct keywords from trends table
+          2. For each keyword with >=8 weeks of data, call predict_keywords for that keyword
+          3. Skip keywords that already have a TrendPrediction within last 7 days
+
+        Returns number of keywords processed.
+
+        BUG FIX [L3]: provide idempotent backfill for trend_predictions.
+        """
+        processed = 0
+        try:
+            q = await session.execute(select(Trend.keyword).distinct())
+            keywords = [r[0] for r in q.all()]
+
+            cutoff = datetime.utcnow() - timedelta(days=7)
+
+            for kw in keywords:
+                # Skip if recent prediction exists
+                pred_q = await session.execute(
+                    select(TrendPrediction).where(
+                        TrendPrediction.keyword == kw,
+                        TrendPrediction.predicted_at >= cutoff,
+                    )
+                )
+                if pred_q.scalars().first() is not None:
+                    continue
+
+                # Count weeks available
+                count_q = await session.execute(select(func.count(Trend.id)).where(Trend.keyword == kw))
+                weeks = count_q.scalar() or 0
+                if weeks >= 8:
+                    # Call predictor for this single keyword (will persist predictions)
+                    await TrendService().predict_keywords(session, [kw])
+                    processed += 1
+
+            logger.info(f"Trend prediction backfill: {processed} keywords processed")
+            return processed
+        except Exception as e:
+            logger.error(f"Error running trend prediction backfill: {e}")
+            raise

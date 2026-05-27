@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from groq import Groq as GroqClient
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 from sqlalchemy import select
 
 from src.config import settings
@@ -60,6 +60,10 @@ DAILY_LIMITS = {"anonymous": 5, "registered": 20}
 MAX_RETRIES = 4
 RETRY_WAIT_MIN = 60  # seconds (increased for quota exhaustion)
 RETRY_WAIT_MAX = 180  # seconds (longer wait for daily quota reset)
+
+# Rate limit keys
+LLM_SUMMARIZE_KEY = "llm_summarize"  # BUG FIX [M7]: rate limit key for summarization
+LLM_OBSERVE_KEY = "llm_observe"  # BUG FIX [M7]: rate limit key for observation
 
 # ---------------------------------------------------------------------------
 # System prompts
@@ -141,10 +145,14 @@ def get_verified_model() -> str:
 
 
 def _is_retryable_error(exc: Exception) -> bool:
-    """Return True if the error looks like a rate-limit or quota error."""
+    """Return True if the error looks like a rate-limit or transient server error.
+
+    Includes common HTTP status codes (429, 500, 502, 503) and textual signals.
+    BUG FIX [M8]: treat 500/502/503 as retryable.
+    """
     msg = str(exc).lower()
     return any(
-        kw in msg for kw in ["429", "rate limit", "quota", "overloaded", "503", "insufficient"]
+        kw in msg for kw in ["429", "500", "502", "503", "rate limit", "quota", "overloaded", "insufficient"]
     )
 
 
@@ -223,6 +231,7 @@ async def _call_openrouter(system_instruction: str, prompt: str) -> str:
     stop=stop_after_attempt(MAX_RETRIES),
     wait=wait_exponential(multiplier=1, min=RETRY_WAIT_MIN, max=RETRY_WAIT_MAX),
     reraise=True,
+    retry=retry_if_exception(lambda e: _is_retryable_error(e)),
     after=lambda state: logger.warning(f"Retry {state.attempt_number} after {RETRY_WAIT_MIN}s..."),
 )
 async def _call_llm(system_instruction: str, prompt: str) -> str:
@@ -360,6 +369,13 @@ async def summarize_news_item(news_item_id: str) -> str | None:
                 url=news.url or "N/A",
                 score=news.score,
             )
+            # BUG FIX [M7]: honor LLM rate limits before calling the external API
+            allowed, retry_after = await check_rate_limit(LLM_SUMMARIZE_KEY)
+            if not allowed:
+                logger.warning("LLM rate limit reached, skipping summarization")
+                return None
+            await check_and_increment(LLM_SUMMARIZE_KEY)
+
             summary = await _call_llm(SUMMARIZATION_SYSTEM, prompt)
             summary = summary.strip()
 
@@ -450,6 +466,13 @@ async def generate_observation_text(
     )
 
     try:
+        # BUG FIX [M7]: honor LLM rate limits for observation generation
+        allowed, retry_after = await check_rate_limit(LLM_OBSERVE_KEY)
+        if not allowed:
+            logger.warning("LLM rate limit reached, skipping observation generation")
+            return None
+        await check_and_increment(LLM_OBSERVE_KEY)
+
         text = await _call_llm(OBSERVATION_SYSTEM, prompt)
         logger.info(f"Generated observation: {text[:80]}...")
         return text.strip()

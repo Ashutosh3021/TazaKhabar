@@ -4,7 +4,19 @@
  */
 import type { DigestItem, Job, Trend } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** Production builds must set NEXT_PUBLIC_API_URL in Vercel (no trailing slash). */
+function resolveApiBase(): string {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:8000";
+  }
+  throw new Error(
+    "NEXT_PUBLIC_API_URL is required in production. Set it in Vercel project settings."
+  );
+}
+
+const API_BASE = resolveApiBase();
 
 /**
  * Build query string from filter object.

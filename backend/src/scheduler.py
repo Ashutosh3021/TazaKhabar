@@ -197,6 +197,30 @@ def start_scheduler() -> None:
         print(f"    - {job.id}: {next_run}")
 
 
+async def run_all_scrapers_now() -> dict[str, str]:
+    """
+    Run all HN scrapers immediately (same jobs as the 2-hour schedule).
+    Useful for manual refresh during development.
+    """
+    print(">>> [SCRAPE] Manual run: all scrapers starting...")
+    results: dict[str, str] = {}
+    for name, job in (
+        ("who_is_hiring", _who_is_hiring_job),
+        ("top_stories", _top_stories_job),
+        ("ask_hn", _ask_hn_job),
+        ("show_hn", _show_hn_job),
+    ):
+        try:
+            await job()
+            results[name] = "ok"
+            print(f">>> [SCRAPE] {name}: ok")
+        except Exception as e:
+            results[name] = f"error: {e}"
+            logger.exception("Manual scraper run failed for %s", name)
+    print(">>> [SCRAPE] Manual run complete")
+    return results
+
+
 def stop_scheduler() -> None:
     """Gracefully shutdown the scheduler."""
     if scheduler.running:

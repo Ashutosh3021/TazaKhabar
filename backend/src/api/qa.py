@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
@@ -120,7 +120,7 @@ async def get_role_matches(
     
     # Get unique roles from jobs database
     stmt = select(Job.role, func.count(Job.id).label("count")).where(
-        Job.report_version == "2"
+        Job.report_version.in_(("1", "2"))
     ).group_by(Job.role).order_by(func.count(Job.id).desc())
     
     result = await db.execute(stmt)
@@ -147,7 +147,7 @@ async def get_role_matches(
         # Get sample job for this role
         job_stmt = select(Job).where(
             Job.role == role,
-            Job.report_version == "2"
+            Job.report_version.in_(("1", "2"))
         ).limit(1)
         
         job_result = await db.execute(job_stmt)
@@ -199,10 +199,12 @@ async def get_market_velocity(
         for skill in user_skills[:5]:
             # Count jobs mentioning this skill
             skill_lower = skill.lower()
+            # tags is JSON/JSONB in Postgres — cast to text instead of array_to_string
+            tags_text = func.lower(cast(Job.tags, String))
             stmt = select(func.count(Job.id)).where(
-                Job.report_version == "2",
-                func.lower(Job.title).like(f"%{skill_lower}%") | 
-                func.lower(func.array_to_string(Job.tags, ',')).like(f"%{skill_lower}%")
+                Job.report_version.in_(("1", "2")),
+                func.lower(Job.title).like(f"%{skill_lower}%")
+                | tags_text.like(f"%{skill_lower}%"),
             )
             result = await session.execute(stmt)
             count = result.scalar() or 0

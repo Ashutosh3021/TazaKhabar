@@ -13,12 +13,23 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def _engine_connect_args(database_url: str) -> dict:
+    """Driver-specific connect_args for create_async_engine."""
+    if "sqlite" in database_url:
+        return {"check_same_thread": False}
+    if "asyncpg" in database_url:
+        # Required for PgBouncer / Supabase pooler (e.g. port 6543, transaction mode)
+        return {"statement_cache_size": 0}
+    return {}
+
+
 # Create async engine
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    connect_args=_engine_connect_args(settings.DATABASE_URL),
 )
 
 # Async session factory
@@ -108,8 +119,9 @@ async def create_all_tables() -> None:
         await conn.run_sync(Base.metadata.create_all)
         logger.info("All database tables created/verified")
 
-        # Step 2: migrate — add any columns that exist in models but not in live DB
-        await _migrate_missing_columns(conn)
+        # Step 2: SQLite-only column migration (uses PRAGMA; not valid on Postgres)
+        if "sqlite" in settings.DATABASE_URL:
+            await _migrate_missing_columns(conn)
 
     logger.info("All database tables and columns are up to date")
 

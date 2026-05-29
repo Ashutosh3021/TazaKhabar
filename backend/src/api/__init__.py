@@ -13,6 +13,8 @@ from src.api.digest import router as digest_router
 from src.api.csv_loader import router as csv_loader_router
 from src.api.qa import router as qa_router
 from src.api.embeddings import router as embeddings_router
+from src.api.scrape import router as scrape_router
+from src.api.notebooks import router as notebooks_router
 
 __all__ = [
     "jobs_router",
@@ -27,4 +29,6 @@ __all__ = [
     "csv_loader_router",
     "qa_router",
     "embeddings_router",
+    "scrape_router",
+    "notebooks_router",
 ]

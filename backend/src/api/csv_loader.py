@@ -5,7 +5,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.services.csv_loader_service import load_jobs_from_csv, get_csv_stats
+from src.services.csv_loader_service import get_csv_stats
+from src.services.notebook_sync_service import sync_jobs_csv
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +28,38 @@ async def get_csv_statistics():
 
 @router.post("/load-jobs")
 async def load_csv_jobs(
-    limit: int = Query(default=100, ge=1, le=1000, description="Max jobs to load"),
-    clear_existing: bool = Query(default=False, description="Clear existing jobs before loading"),
+    force: bool = Query(default=True, description="Force sync even if CSV unchanged"),
 ):
     """
-    Load jobs from jobs_output.csv into the database.
-    
-    - **limit**: Maximum number of jobs to load (1-1000)
-    - **clear_existing**: Whether to clear existing jobs before loading
+    Load jobs from jobs_output.csv into the database (same as POST /api/notebooks/sync).
+
+    Prefer POST /api/notebooks/sync from notebooks; the app also auto-syncs every 15s.
     """
     try:
-        logger.info(f"Loading jobs from CSV: limit={limit}, clear_existing={clear_existing}")
-        result = await load_jobs_from_csv(limit=limit, clear_existing=clear_existing)
-        
-        if result["success"] > 0:
+        logger.info("Manual CSV load via /api/csv/load-jobs")
+        result = await sync_jobs_csv(force=force)
+
+        if result.get("status") == "skipped":
+            raise HTTPException(status_code=400, detail=result.get("reason", "CSV not found"))
+
+        if result.get("status") == "unchanged":
             return {
                 "status": "success",
-                "message": f"Loaded {result['success']} jobs from CSV",
+                "message": "jobs_output.csv already synced",
                 "data": result,
             }
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to load jobs: {result.get('errors', ['Unknown error'])}",
-            )
+
+        if result.get("success", 0) > 0 or result.get("status") == "synced":
+            return {
+                "status": "success",
+                "message": f"Loaded {result.get('success', 0)} jobs from CSV",
+                "data": result,
+            }
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"No jobs loaded: {result.get('errors', ['Unknown error'])}",
+        )
             
     except HTTPException:
         raise

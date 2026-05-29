@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router, csv_loader_router, qa_router
-from src.api import embeddings_router
+from src.api import embeddings_router, scrape_router, notebooks_router
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Configure logging
@@ -50,19 +50,24 @@ async def lifespan(app: FastAPI):
     model = get_embedding_model()
     print(">>> [OK] Embedding model loaded")
 
-    # Load jobs from CSV on startup
-    print(">>> [STARTUP] Loading jobs from CSV...")
+    # Notebook pipeline: jobs_output.csv → database (also polled in background)
+    print(">>> [STARTUP] Syncing notebook CSV outputs...")
     try:
-        from src.services.csv_loader_service import load_jobs_from_csv, get_csv_stats
-        stats = await get_csv_stats()
-        if stats['jobs_csv_exists'] and stats['jobs_count'] > 0:
-            print(f">>> [CSV] Found {stats['jobs_count']} jobs in CSV")
-            result = await load_jobs_from_csv(limit=None, clear_existing=False)
-            print(f">>> [CSV] Loaded {result['success']} jobs into database")
-        else:
-            print(">>> [CSV] No jobs found in CSV file")
+        from src.services.notebook_sync_service import (
+            start_notebook_watcher,
+            sync_all_notebook_outputs,
+        )
+
+        sync_result = await sync_all_notebook_outputs(force=False)
+        jobs = sync_result.get("jobs", {})
+        print(
+            f">>> [NOTEBOOK] jobs_output.csv → DB: status={jobs.get('status')}, "
+            f"loaded={jobs.get('success', 0)}"
+        )
+        start_notebook_watcher()
+        print(">>> [OK] Notebook CSV watcher started")
     except Exception as e:
-        print(f">>> [CSV] Warning: Could not load CSV jobs: {e}")
+        print(f">>> [NOTEBOOK] Warning: Could not sync notebook CSVs: {e}")
 
     # Import and start scheduler
     print(">>> [STARTUP] Starting scraper scheduler...")
@@ -78,6 +83,9 @@ async def lifespan(app: FastAPI):
     print(">>> [SHUTDOWN] TazaKhabar backend shutting down...")
     print(">>> [SHUTDOWN] Stopping scraper scheduler...")
     stop_scheduler()
+    from src.services.notebook_sync_service import stop_notebook_watcher
+
+    await stop_notebook_watcher()
     print(">>> [OK] Scraper scheduler stopped gracefully")
     print(">>> [OK] Shutdown complete")
     print("=" * 60 + "\n")
@@ -117,6 +125,10 @@ app.include_router(qa_router)
 print("    + /api/qa registered")
 app.include_router(embeddings_router)
 print("    + /api/embeddings registered")
+app.include_router(scrape_router)
+print("    + /api/scrape registered")
+app.include_router(notebooks_router)
+print("    + /api/notebooks registered")
 
 # Add CORS middleware
 print(">>> [SETUP] Configuring CORS middleware...")

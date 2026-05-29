@@ -98,13 +98,18 @@ def infer_location_type(location: str) -> str:
     return "On-site"
 
 
-async def load_jobs_from_csv(limit: int | None = None, clear_existing: bool = False) -> dict[str, Any]:
+async def load_jobs_from_csv(
+    limit: int | None = None,
+    clear_existing: bool = False,
+    start_row: int = 0,
+) -> dict[str, Any]:
     """
     Load jobs from jobs_output.csv into the database.
     
     Args:
         limit: Maximum number of jobs to load (None = all)
         clear_existing: Whether to clear existing jobs before loading
+        start_row: Skip this many data rows (for incremental notebook sync)
         
     Returns:
         Dict with success count and errors
@@ -124,6 +129,7 @@ async def load_jobs_from_csv(limit: int | None = None, clear_existing: bool = Fa
             logger.info("Cleared existing jobs from database")
     
     loaded_count = 0
+    skipped_count = 0
     error_count = 0
     errors = []
     
@@ -133,7 +139,10 @@ async def load_jobs_from_csv(limit: int | None = None, clear_existing: bool = Fa
             
             async with async_session() as session:
                 for i, row in enumerate(reader):
-                    if limit and i >= limit:
+                    if i < start_row:
+                        skipped_count += 1
+                        continue
+                    if limit is not None and loaded_count >= limit:
                         break
                     
                     try:
@@ -213,11 +222,18 @@ async def load_jobs_from_csv(limit: int | None = None, clear_existing: bool = Fa
         logger.error(f"Error loading CSV: {e}")
         return {"success": loaded_count, "errors": [str(e)], "total": 0}
     
-    logger.info(f"CSV loading complete: {loaded_count} jobs loaded, {error_count} errors")
+    logger.info(
+        "CSV loading complete: %s loaded, %s skipped, %s errors",
+        loaded_count,
+        skipped_count,
+        error_count,
+    )
     return {
         "success": loaded_count,
+        "skipped": skipped_count,
+        "start_row": start_row,
         "errors": errors,
-        "total": loaded_count + error_count
+        "total": loaded_count + error_count,
     }
 
 

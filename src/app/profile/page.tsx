@@ -49,6 +49,9 @@ export default function ProfilePage() {
         if (profile.roles?.length && !userProfile.roles?.length) {
           setUserProfile({ ...userProfile, roles: profile.roles, experienceLevel: profile.experience_level || userProfile.experienceLevel });
         }
+        if (profile.resume_text || profile.ats_score !== null) {
+          setResumeUploaded(true);
+        }
         if (profile.ats_score !== null && profile.ats_score !== undefined) {
           setAtsResult({
             ats_score: profile.ats_score,
@@ -180,18 +183,27 @@ export default function ProfilePage() {
     await handleAnalyze(file);
   }, [handleAnalyze]);
 
-  const extractedSkills = useMemo(() => {
-    if (atsResult?.ats_score) return atsResult.ats_score;
-    if (!resumeUploaded) return 0;
-    return 0;
-  }, [atsResult, resumeUploaded]);
+  const atsScore = atsResult?.ats_score ?? null;
+
+  const trendingSkills = useMemo(() => {
+    const suggested = atsResult?.suggested_additions ?? [];
+    const missing = new Set((atsResult?.missing_keywords ?? []).map((k) => k.toLowerCase()));
+    return suggested.filter((s) => !missing.has(s.toLowerCase()));
+  }, [atsResult]);
 
   const remainingSeconds = rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - nowMs) / 1000)) : 0;
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
   const countdownLabel = remainingSeconds > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : "0:00";
-  const suggestedSkills = atsResult?.suggested_additions ?? [];
   const isRateLimited = Boolean(rateLimitedUntil && rateLimitedUntil > nowMs);
+
+  const handleReanalyze = useCallback(() => {
+    if (!resumeUploaded) {
+      fileInputRef.current?.click();
+      return;
+    }
+    void handleAnalyzeStoredResume();
+  }, [resumeUploaded, handleAnalyzeStoredResume]);
 
   const exp = EXPERIENCE_MAP[userProfile.experienceLevel] ?? { label: "Senior+", roman: "IV" as const };
 
@@ -211,7 +223,7 @@ export default function ProfilePage() {
         <div className="hidden md:grid md:grid-cols-12 gap-12">
           <aside className="md:col-span-4 flex flex-col gap-12">
             <AccountCard email={userProfile.email} onSignOut={() => { resetAll(); router.push("/"); }} />
-            <ResumeCard extractedSkills={extractedSkills} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
+            <ResumeCard atsScore={atsScore} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
           </aside>
           <main className="md:col-span-8 flex flex-col gap-12">
             <RolesCard roles={userProfile.roles} />
@@ -222,13 +234,13 @@ export default function ProfilePage() {
               isRateLimited={isRateLimited}
               countdownLabel={countdownLabel}
               atsResult={atsResult}
-              suggestedSkills={suggestedSkills}
+              trendingSkills={trendingSkills}
               analyzeError={analyzeError}
               cooldownDays={cooldownDays}
-              onUpload={() => fileInputRef.current?.click()}
+              onAnalyze={handleReanalyze}
             />
             <OperationalPreferencesSection hasAccount={hasAccount} />
-            <TerminalCard extractedSkills={extractedSkills} atsResult={atsResult} suggestedSkills={suggestedSkills} />
+            <TerminalCard atsScore={atsScore} atsResult={atsResult} trendingSkills={trendingSkills} />
           </main>
         </div>
 
@@ -249,7 +261,7 @@ export default function ProfilePage() {
           {mobileTab === "ACCOUNT" && (
             <div className="space-y-10">
               <AccountCard email={userProfile.email} onSignOut={() => { resetAll(); router.push("/"); }} />
-              <ResumeCard extractedSkills={extractedSkills} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
+              <ResumeCard atsScore={atsScore} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
             </div>
           )}
           {mobileTab === "ROLES" && (
@@ -266,14 +278,13 @@ export default function ProfilePage() {
                 isRateLimited={isRateLimited}
                 countdownLabel={countdownLabel}
                 atsResult={atsResult}
-                suggestedSkills={suggestedSkills}
+                trendingSkills={trendingSkills}
                 analyzeError={analyzeError}
                 cooldownDays={cooldownDays}
-                onUpload={() => fileInputRef.current?.click()}
-                onAnalyze={resumeUploaded ? handleAnalyzeStoredResume : () => fileInputRef.current?.click()}
+                onAnalyze={handleReanalyze}
               />
               <OperationalPreferencesSection hasAccount={hasAccount} />
-              <TerminalCard extractedSkills={extractedSkills} atsResult={atsResult} suggestedSkills={suggestedSkills} />
+              <TerminalCard atsScore={atsScore} atsResult={atsResult} trendingSkills={trendingSkills} />
             </div>
           )}
         </div>
@@ -301,8 +312,8 @@ function AccountCard({ email, onSignOut }: { email: string; onSignOut: () => voi
   );
 }
 
-function ResumeCard({ extractedSkills, onFileChange, fileInputRef }: { extractedSkills: number; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; fileInputRef: React.RefObject<HTMLInputElement> }) {
-  const hasAnalysis = extractedSkills > 0;
+function ResumeCard({ atsScore, onFileChange, fileInputRef }: { atsScore: number | null; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; fileInputRef: React.RefObject<HTMLInputElement> }) {
+  const hasAnalysis = atsScore !== null && atsScore > 0;
   return (
     <section>
       <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">04 / RESUME MANAGEMENT</h3>
@@ -311,7 +322,7 @@ function ResumeCard({ extractedSkills, onFileChange, fileInputRef }: { extracted
         <div>
           <p className="font-mono text-sm mb-1 uppercase">RESUME.PDF</p>
           <p className="mono-label text-[10px] text-primary">
-            {hasAnalysis ? `${extractedSkills} ATS SCORE` : "NO RESUME UPLOADED"}
+            {hasAnalysis ? `ATS SCORE: ${atsScore}` : "NO RESUME UPLOADED"}
           </p>
         </div>
         <label className="w-full">
@@ -366,11 +377,11 @@ function ExperienceCard({ label }: { label: string }) {
 }
 
 function ResumeIntelligenceSection({
-  resumeUploaded, isAnalyzing, isRateLimited, countdownLabel, atsResult, suggestedSkills, analyzeError, cooldownDays, onUpload, onAnalyze
+  resumeUploaded, isAnalyzing, isRateLimited, countdownLabel, atsResult, trendingSkills, analyzeError, cooldownDays, onAnalyze,
 }: {
   resumeUploaded: boolean; isAnalyzing: boolean; isRateLimited: boolean; countdownLabel: string;
-  atsResult: AtsResult | null; suggestedSkills: string[]; analyzeError: string | null;
-  cooldownDays: number | null; onUpload: () => void; onAnalyze: () => void;
+  atsResult: AtsResult | null; trendingSkills: string[]; analyzeError: string | null;
+  cooldownDays: number | null; onAnalyze: () => void;
 }) {
   const showRateLimitedText = isRateLimited && resumeUploaded;
   const buttonText = isAnalyzing ? "ANALYZING..." :
@@ -387,7 +398,7 @@ function ResumeIntelligenceSection({
     <section className={`brutalist-border-primary p-0 bg-card-dark border border-border-dark ${!resumeUploaded ? "text-[#333]" : "text-neutral-beige"}`}>
       <div className="p-6 space-y-6">
         <div className="flex items-end justify-between gap-4">
-          <h3 className={`mono-label text-xs font-bold ${disabledByUpload ? "text-[#333]" : "text-primary"}`}>05 / RESUME INTELLIGENCE</h3>
+          <h3 className={`mono-label text-xs font-bold ${!resumeUploaded ? "text-[#333]" : "text-primary"}`}>05 / RESUME INTELLIGENCE</h3>
           {cooldownDays !== null && (
             <p className="mono-label text-[10px] text-dim-text">Re-analysis in {cooldownDays} days</p>
           )}
@@ -400,34 +411,38 @@ function ResumeIntelligenceSection({
               <span className="font-serif text-5xl font-black text-primary">{atsResult.ats_score}</span>
               <span className="mono-label text-[11px] text-dim-text uppercase">ATS SCORE</span>
             </div>
+            {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
+              <div>
+                <p className="mono-label text-[10px] text-primary uppercase mb-2">ATS GAP KEYWORDS</p>
+                <p className="font-mono text-[10px] text-dim-text mb-2">Terms scanners expect but are not clearly on your resume.</p>
+                <div className="flex flex-wrap gap-2">
+                  {atsResult.missing_keywords.map((kw) => (
+                    <span key={kw} className="mono-label text-[10px] px-2 py-1 border border-[#444] text-[#ddd] uppercase tracking-[0.02em]">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            )}
             {atsResult.critical_issues.length > 0 && (
               <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">CRITICAL FIXES</p>
-                <ul className="space-y-1">
+                <p className="mono-label text-[10px] text-primary uppercase mb-2">PRIORITY FIXES</p>
+                <p className="font-mono text-[10px] text-dim-text mb-2">Concrete edits to improve your score.</p>
+                <ul className="space-y-2">
                   {atsResult.critical_issues.map((issue, i) => (
-                    <li key={i} className="font-mono text-[11px] text-neutral-beige/80 flex gap-2">
-                      <span className="text-primary">→</span>{issue}
+                    <li key={i} className="font-mono text-[11px] text-neutral-beige/90 leading-relaxed flex gap-2">
+                      <span className="text-primary shrink-0">{i + 1}.</span>
+                      <span>{issue}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {suggestedSkills.length > 0 && (
+            {trendingSkills.length > 0 && (
               <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">SUGGESTED ADDITIONS</p>
+                <p className="mono-label text-[10px] text-primary uppercase mb-2">TRENDING SKILLS TO ADD</p>
+                <p className="font-mono text-[10px] text-dim-text mb-2">Hot in current job posts for your target roles.</p>
                 <div className="flex flex-wrap gap-2">
-                  {suggestedSkills.map((skill) => (
+                  {trendingSkills.map((skill) => (
                     <span key={skill} className="mono-label text-[10px] px-2 py-1 border border-primary/60 text-primary uppercase tracking-[0.02em]">{skill}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
-              <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">MISSING KEYWORDS</p>
-                <div className="flex flex-wrap gap-2">
-                  {atsResult.missing_keywords.map((kw) => (
-                    <span key={kw} className="mono-label text-[10px] px-2 py-1 border border-[#444] text-[#ddd] uppercase tracking-[0.02em]">{kw}</span>
                   ))}
                 </div>
               </div>
@@ -500,8 +515,8 @@ function ToggleSwitch({ checked, onToggle, disabled }: { checked: boolean; onTog
   );
 }
 
-function TerminalCard({ extractedSkills, atsResult, suggestedSkills }: { extractedSkills: number; atsResult: AtsResult | null; suggestedSkills: string[] }) {
-  const hasResumeAnalysis = atsResult !== null;
+function TerminalCard({ atsScore, atsResult, trendingSkills }: { atsScore: number | null; atsResult: AtsResult | null; trendingSkills: string[] }) {
+  const hasResumeAnalysis = atsScore !== null;
   return (
     <section>
       <div className="brutalist-border p-4 bg-black">
@@ -520,7 +535,10 @@ function TerminalCard({ extractedSkills, atsResult, suggestedSkills }: { extract
               {atsResult.critical_issues.length > 0 && (
                 <p>&gt; CRITICAL_ISSUES: <span className="text-primary">{atsResult.critical_issues.length}</span> DETECTED</p>
               )}
-              {suggestedSkills.length > 0 && <p>&gt; SUGGESTED_KEYWORDS: {suggestedSkills.slice(0, 3).join(", ")}...</p>}
+              {trendingSkills.length > 0 && <p>&gt; TRENDING_SKILLS: {trendingSkills.slice(0, 3).join(", ")}...</p>}
+              {(atsResult.missing_keywords?.length ?? 0) > 0 && (
+                <p>&gt; ATS_GAPS: {atsResult.missing_keywords.slice(0, 3).join(", ")}...</p>
+              )}
               {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
                 <p>&gt; MISSING_KEYWORDS: <span className="text-primary">{atsResult.missing_keywords.length}</span> SUGGESTED</p>
               )}

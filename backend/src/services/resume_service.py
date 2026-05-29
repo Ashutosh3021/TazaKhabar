@@ -171,19 +171,27 @@ def chunk_resume_sections(text: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 ATS_SYSTEM = (
-    "You are an expert ATS (Applicant Tracking System) analyst. "
-    "Score resumes 0-100 honestly. "
-    "List the top 3 most critical issues that hurt the score. "
-    "List the 5-10 missing keywords/technologies commonly expected in tech resumes."
+    "You are an expert ATS resume analyst. "
+    "Write clear, specific feedback a candidate can act on this week. "
+    "Use plain English sentences for issues (not labels or JSON keys). "
+    "Keywords must be single technologies or skills (e.g. React, PostgreSQL), not full sentences."
 )
 
-ATS_PROMPT = """Analyze this resume and return ONLY valid JSON (no markdown, no explanation):
+ATS_PROMPT = """Analyze this resume. Return ONLY valid JSON (no markdown):
 
 {{
   "score": <0-100 integer>,
-  "critical_issues": ["<specific actionable issue 1>", "<specific actionable issue 2>", "<specific actionable issue 3>"],
-  "missing_keywords": ["<keyword1>", "<keyword2>", ...]
+  "critical_issues": [
+    "<One sentence: what is wrong and how to fix it, e.g. 'Add measurable outcomes to your last role (metrics, %, scale).'>",
+    "<Second issue>",
+    "<Third issue>"
+  ],
+  "missing_keywords": ["<tech/skill>", "... up to 8 items ATS scanners expect for the candidate's level"]
 }}
+
+Rules:
+- critical_issues: exactly 3 short actionable sentences (max 120 chars each).
+- missing_keywords: 5-8 items only; no duplicates; no generic words like 'experience' or 'teamwork'.
 
 Resume text (first 8000 chars):
 {resume_text}
@@ -213,11 +221,10 @@ async def analyze_resume_ats(resume_text: str) -> dict[str, Any]:
 
         parsed = json.loads(result)
 
-        # Validate structure
         return {
             "score": max(0, min(100, int(parsed.get("score", 0)))),
-            "critical_issues": list(parsed.get("critical_issues", []))[:3],
-            "missing_keywords": list(parsed.get("missing_keywords", []))[:10],
+            "critical_issues": _normalize_phrase_list(parsed.get("critical_issues", []), max_items=3),
+            "missing_keywords": _normalize_keyword_list(parsed.get("missing_keywords", []), max_items=8),
         }
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse ATS response as JSON: {e}, result: {result[:200]}")
@@ -239,17 +246,19 @@ async def analyze_resume_ats(resume_text: str) -> dict[str, Any]:
 # Suggested additions
 # ---------------------------------------------------------------------------
 
-SUGGESTIONS_PROMPT = """You are a concise career assistant.
+SUGGESTIONS_PROMPT = """You are a tech hiring market analyst.
 
-Based on the provided resume content and current market trends, suggest 5-7 keywords or technologies the candidate should add to increase discoverability and match against target roles.
+Suggest 5-7 technologies or skills this candidate should ADD to their resume to match current job postings.
+Do NOT repeat skills already on the resume. Prefer items from trending market keywords when relevant to their target roles.
 
-Return ONLY a JSON array (no markdown, no explanation):
-["keyword1", "keyword2", ...]
+Return ONLY a JSON array of strings (no markdown):
+["React", "TypeScript", ...]
 
+Already on resume: {resume_keywords}
 Resume skills section: {skills_section}
 Resume experience excerpt: {experience_excerpt}
-User target roles: {user_roles}
-Top trending keywords in tech market: {booming_keywords}
+Target roles: {user_roles}
+Trending in market this week: {booming_keywords}
 
 JSON:"""
 
@@ -274,16 +283,22 @@ async def generate_suggested_additions(
     """
     import json
 
-    skills_section = (resume_sections or {}).get("skills", "")[:2000] if resume_sections else ""
-    experience_excerpt = (resume_sections or {}).get("experience", "")[:2000] if resume_sections else ""
+    sections = resume_sections or {}
+    skills_section = sections.get("skills", "")[:2000]
+    experience_excerpt = sections.get("experience", "")[:2000]
+    if not skills_section and not experience_excerpt:
+        combined = sections.get("projects", "") or ""
+        experience_excerpt = combined[:2000]
 
     prompt = SUGGESTIONS_PROMPT.format(
-        skills_section=skills_section,
-        experience_excerpt=experience_excerpt,
-        resume_keywords=", ".join(resume_keywords[:50]),
+        skills_section=skills_section or "(not detected — infer from experience)",
+        experience_excerpt=experience_excerpt or "(not detected)",
+        resume_keywords=", ".join(resume_keywords[:50]) if resume_keywords else "(none detected)",
         user_roles=", ".join(user_roles) if user_roles else "software engineer",
-        booming_keywords=", ".join(booming_keywords[:20]),
+        booming_keywords=", ".join(booming_keywords[:20]) if booming_keywords else "(no trend data)",
     )
+
+    resume_lower = {kw.lower() for kw in resume_keywords}
 
     try:
         result = await generate_with_retry(prompt, None)
@@ -292,13 +307,58 @@ async def generate_suggested_additions(
         result = re.sub(r"\s*```$", "", result)
         suggestions = json.loads(result)
 
-        # Filter out keywords already in resume
-        resume_lower = {kw.lower() for kw in resume_keywords}
-        filtered = [s for s in suggestions if isinstance(s, str) and s.lower() not in resume_lower]
-        return filtered[:7]
+        filtered = _normalize_keyword_list(suggestions, max_items=7)
+        filtered = [s for s in filtered if s.lower() not in resume_lower]
+        if filtered:
+            return filtered
     except (json.JSONDecodeError, Exception) as e:
         logger.error(f"Failed to generate suggestions: {e}")
-        return []
+
+    # Fallback: trending keywords not already on resume
+    if booming_keywords:
+        return [
+            kw for kw in booming_keywords
+            if kw and kw.lower() not in resume_lower
+        ][:7]
+    return []
+
+
+def _normalize_phrase_list(items: list, max_items: int = 3) -> list[str]:
+    """Clean LLM issue strings for UI display."""
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        text = re.sub(r"\s+", " ", item.strip().strip('"').strip("'"))
+        if not text or len(text) < 8:
+            continue
+        if text.lower() in {x.lower() for x in out}:
+            continue
+        out.append(text[:200])
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _normalize_keyword_list(items: list, max_items: int = 10) -> list[str]:
+    """Normalize skill/keyword tokens from LLM output."""
+    out: list[str] = []
+    skip = {"experience", "teamwork", "communication", "leadership", "problem solving"}
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        text = item.strip().strip('"').strip("'")
+        if not text or len(text) > 40:
+            continue
+        if " " in text and len(text.split()) > 4:
+            continue
+        key = text.lower()
+        if key in skip or key in {x.lower() for x in out}:
+            continue
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
 
 
 # ---------------------------------------------------------------------------

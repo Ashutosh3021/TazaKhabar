@@ -165,6 +165,9 @@ async def analyse_resume(
         booming_keywords=booming_keywords,
         resume_sections=sections,
     )
+    # Avoid duplicating ATS missing keywords in trending suggestions
+    missing_lower = {k.lower() for k in ats_result["missing_keywords"]}
+    suggested = [s for s in suggested if s.lower() not in missing_lower]
     print(f">>> [API:POST /api/resume/analyse] Suggestions: {suggested}")
 
     # 11. Store in user profile if user_id provided

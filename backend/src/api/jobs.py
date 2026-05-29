@@ -167,9 +167,9 @@ async def get_jobs(
         print(f"    Filters -> roles: {roles}, remote: {remote}, startup_only: {startup_only}")
         print(f"    Pagination -> skip: {skip}, limit: {limit}")
         
-        # Build base filter — only active report version
-        base_filter = Job.report_version == "2"
-        print(f"    Filter: report_version = '2'")
+        # Live feed (v1) + staging bucket (v2) scrapers fill until refresh promotes 2→1
+        base_filter = Job.report_version.in_(("1", "2"))
+        print(f"    Filter: report_version in ('1', '2')")
 
         # Remote filter (AND) — apply at DB level using LIKE
         if remote:

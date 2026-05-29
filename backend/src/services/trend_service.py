@@ -501,7 +501,7 @@ class TrendService:
         return results
 
 
-    async def run_predictions_backfill(session: AsyncSession) -> int:
+    async def run_predictions_backfill(self, session: AsyncSession) -> int:
         """
         One-off backfill for trend predictions created after Phase 1 migration.
 
@@ -545,3 +545,8 @@ class TrendService:
         except Exception as e:
             logger.error(f"Error running trend prediction backfill: {e}")
             raise
+
+
+async def run_predictions_backfill(session: AsyncSession) -> int:
+    """Module-level helper used by API routes."""
+    return await TrendService().run_predictions_backfill(session)

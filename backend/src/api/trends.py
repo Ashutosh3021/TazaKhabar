@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from src.api.deps import get_db
 from src.db.schemas import PaginatedResponse, PaginationMeta
-from src.services.trend_service import compute_keyword_frequencies, get_trends, TrendService, TECH_KEYWORDS, run_predictions_backfill
+from src.services.trend_service import compute_keyword_frequencies, get_trends, TrendService
 from src.db.database import async_session
 from src.db.models import Observation
 

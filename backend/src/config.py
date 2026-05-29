@@ -1,6 +1,26 @@
 import os
 from pathlib import Path
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_async_database_url(url: str) -> str:
+    """
+    Ensure DATABASE_URL uses an async SQLAlchemy driver.
+
+    Bare postgresql:// defaults to psycopg2 (sync), which breaks create_async_engine.
+    """
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    prefix, _, rest = url.partition("://")
+    if prefix == "postgresql" and "+" not in prefix:
+        return f"postgresql+asyncpg://{rest}"
+    if prefix == "postgresql+psycopg2":
+        return f"postgresql+asyncpg://{rest}"
+    return url
 
 
 class Settings(BaseSettings):
@@ -11,6 +31,12 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./tazakhabar.db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v: str) -> str:
+        return normalize_async_database_url(v)
+
     OPENROUTER_API_KEY: str = "your_key_here"
     GROQ_API_KEY: str = "your_key_here"
     SUPABASE_URL: str = ""
@@ -27,6 +53,11 @@ class Settings(BaseSettings):
     )
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")
+
+    # Notebook CSV pipeline (job_scraper.ipynb → jobs_output.csv)
+    NOTEBOOK_SYNC_ENABLED: bool = True
+    NOTEBOOK_SYNC_INTERVAL_SEC: int = 15
+    TAZA_API_URL: str = "http://localhost:8000"
 
     @property
     def origins_list(self) -> list[str]:

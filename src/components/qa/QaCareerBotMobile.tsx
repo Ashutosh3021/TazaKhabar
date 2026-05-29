@@ -167,7 +167,8 @@ export default function QaCareerBotMobile() {
                 </p>
               </div>
               <span className="mono-label mt-2 text-[10px] text-dim-text">
-                {msg.sender === "user" ? "USER" : "RADAR_AI"} // {new Date().toLocaleTimeString()}
+                {msg.sender === "user" ? "USER" : "RADAR_AI"}
+                {/* {new Date().toLocaleTimeString()} */}
               </span>
             </div>
           ))}

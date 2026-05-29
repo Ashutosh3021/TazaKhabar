@@ -620,7 +620,7 @@ export default function JobsPage() {
         <section className="md:col-span-9 lg:col-span-9">
           <header className="mb-4">
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#555]">
-              SOURCED FROM HN WHO'S HIRING · LAST PULL 14 MIN AGO
+              SOURCED FROM HN WHO&apos;S HIRING · LAST PULL 14 MIN AGO
             </p>
             <p className="mono-label text-[10px] text-[#555] uppercase tracking-[0.2em] mt-1">
               LAST UPDATED · 2H AGO
@@ -691,7 +691,7 @@ export default function JobsPage() {
             {!hasMore && jobs.length > 0 && (
               <div className="text-center py-6">
                 <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.2em]">
-                  You've reached the end • {jobs.length} roles loaded
+                  You&apos;ve reached the end • {jobs.length} roles loaded
                 </p>
               </div>
             )}

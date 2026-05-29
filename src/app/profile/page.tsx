@@ -516,7 +516,7 @@ function ToggleSwitch({ checked, onToggle, disabled }: { checked: boolean; onTog
 }
 
 function TerminalCard({ atsScore, atsResult, trendingSkills }: { atsScore: number | null; atsResult: AtsResult | null; trendingSkills: string[] }) {
-  const hasResumeAnalysis = atsScore !== null;
+  const hasResumeAnalysis = atsResult != null;
   return (
     <section>
       <div className="brutalist-border p-4 bg-black">

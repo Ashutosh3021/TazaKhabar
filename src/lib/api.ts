@@ -4,8 +4,8 @@
  */
 import type { DigestItem, Job, Trend } from "@/types";
 
-/** Production builds must set NEXT_PUBLIC_API_URL in Vercel (no trailing slash). */
-function resolveApiBase(): string {
+/** Production: set NEXT_PUBLIC_API_URL in Vercel (no trailing slash). */
+function getApiBase(): string {
   const fromEnv = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
   if (fromEnv) return fromEnv;
   if (process.env.NODE_ENV !== "production") {
@@ -15,8 +15,6 @@ function resolveApiBase(): string {
     "NEXT_PUBLIC_API_URL is required in production. Set it in Vercel project settings."
   );
 }
-
-const API_BASE = resolveApiBase();
 
 /**
  * Build query string from filter object.
@@ -72,7 +70,7 @@ export async function fetchJobs(filters?: {
   if (filters?.limit !== undefined) params.limit = filters.limit;
 
   const qs = buildQuery(params);
-  const url = `${API_BASE}/api/jobs${qs}`;
+  const url = `${getApiBase()}/api/jobs${qs}`;
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -104,7 +102,7 @@ export async function fetchNews(params?: {
   if (params?.limit !== undefined) queryParams.limit = params.limit;
 
   const qs = buildQuery(queryParams);
-  const url = `${API_BASE}/api/news${qs}`;
+  const url = `${getApiBase()}/api/news${qs}`;
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -127,7 +125,7 @@ export async function fetchNews(params?: {
  */
 export async function fetchBadgeCounts(): Promise<{ new_jobs: number; new_news: number }> {
   try {
-    const url = `${API_BASE}/api/badge`;
+    const url = `${getApiBase()}/api/badge`;
     const res = await fetch(url, {
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
@@ -154,7 +152,7 @@ export async function fetchTrends(params?: {
   limit?: number;
 }): Promise<{ data: Trend[]; meta: Record<string, unknown> }> {
   const limit = params?.limit ?? 20;
-  const url = `${API_BASE}/api/trends?limit=${limit}`;
+  const url = `${getApiBase()}/api/trends?limit=${limit}`;
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -176,7 +174,7 @@ export async function fetchTrends(params?: {
  * Fetch trend predictions (W+2, W+4) for keywords.
  */
 export async function fetchTrendPredictions(): Promise<{ data: Array<{ keyword: string; current: number; w2: number | null; w4: number | null; confidence: number }>; meta: Record<string, unknown> }> {
-  const url = `${API_BASE}/api/trends/predictions`;
+  const url = `${getApiBase()}/api/trends/predictions`;
   const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
   if (!res.ok) throw new Error(`Failed to fetch trend predictions: ${res.status}`);
   return res.json();
@@ -186,7 +184,7 @@ export async function fetchTrendPredictions(): Promise<{ data: Array<{ keyword: 
  * Trigger report refresh (swap Report 2 → Report 1).
  */
 export async function triggerRefresh(): Promise<{ status: string; new_jobs: number; new_news: number }> {
-  const url = `${API_BASE}/api/refresh`;
+  const url = `${getApiBase()}/api/refresh`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -222,7 +220,7 @@ export async function analyseResume(file: File): Promise<{
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${API_BASE}/api/resume/analyse`, {
+  const res = await fetch(`${getApiBase()}/api/resume/analyse`, {
     method: "POST",
     headers: getUserIdHeader(),
     body: formData,
@@ -270,7 +268,7 @@ export async function fetchDigest(params?: {
   if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));
 
   const qs = searchParams.toString();
-  const url = `${API_BASE}/api/digest${qs ? `?${qs}` : ""}`;
+  const url = `${getApiBase()}/api/digest${qs ? `?${qs}` : ""}`;
 
   const res = await fetch(url, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
@@ -298,7 +296,7 @@ export async function fetchProfile(): Promise<{
   last_analysis_at: string | null;
   preferences: Record<string, unknown>;
 }> {
-  const res = await fetch(`${API_BASE}/api/profile`, {
+  const res = await fetch(`${getApiBase()}/api/profile`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
@@ -315,7 +313,7 @@ export async function updateProfile(data: {
   experience_level?: string;
   preferences?: Record<string, unknown>;
 }): Promise<{ id: string }> {
-  const res = await fetch(`${API_BASE}/api/profile`, {
+  const res = await fetch(`${getApiBase()}/api/profile`, {
     method: "POST",
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -332,7 +330,7 @@ export async function fetchObservation(): Promise<{
   generated_at: string | null;
   fallback: boolean;
 }> {
-  const res = await fetch(`${API_BASE}/api/observation`, {
+  const res = await fetch(`${getApiBase()}/api/observation`, {
     headers: { "Content-Type": "application/json" },
     next: { revalidate: 3600 },
   });
@@ -358,7 +356,7 @@ export async function getCsvStats(): Promise<{
     }>;
   };
 }> {
-  const res = await fetch(`${API_BASE}/api/csv/stats`, {
+  const res = await fetch(`${getApiBase()}/api/csv/stats`, {
     headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch CSV stats: ${res.status}`);
@@ -381,7 +379,7 @@ export async function loadJobsFromCsv(
   };
 }> {
   const res = await fetch(
-    `${API_BASE}/api/csv/load-jobs?limit=${limit}&clear_existing=${clearExisting}`,
+    `${getApiBase()}/api/csv/load-jobs?limit=${limit}&clear_existing=${clearExisting}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -452,7 +450,7 @@ export interface ActionRequired {
  * Get user profile for Q&A page.
  */
 export async function fetchQaProfile(): Promise<QaProfile> {
-  const res = await fetch(`${API_BASE}/api/qa/profile`, {
+  const res = await fetch(`${getApiBase()}/api/qa/profile`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch Q&A profile: ${res.status}`);
@@ -466,7 +464,7 @@ export async function fetchRoleMatches(limit: number = 5): Promise<{
   matches: RoleMatch[];
   total_available: number;
 }> {
-  const res = await fetch(`${API_BASE}/api/qa/matches?limit=${limit}`, {
+  const res = await fetch(`${getApiBase()}/api/qa/matches?limit=${limit}`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch role matches: ${res.status}`);
@@ -477,7 +475,7 @@ export async function fetchRoleMatches(limit: number = 5): Promise<{
  * Get market velocity for user's skills.
  */
 export async function fetchMarketVelocity(): Promise<MarketVelocity> {
-  const res = await fetch(`${API_BASE}/api/qa/market-velocity`, {
+  const res = await fetch(`${getApiBase()}/api/qa/market-velocity`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch market velocity: ${res.status}`);
@@ -488,7 +486,7 @@ export async function fetchMarketVelocity(): Promise<MarketVelocity> {
  * Get network influence score.
  */
 export async function fetchNetworkInfluence(): Promise<NetworkInfluence> {
-  const res = await fetch(`${API_BASE}/api/qa/network-influence`, {
+  const res = await fetch(`${getApiBase()}/api/qa/network-influence`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch network influence: ${res.status}`);
@@ -499,7 +497,7 @@ export async function fetchNetworkInfluence(): Promise<NetworkInfluence> {
  * Get action items for user profile.
  */
 export async function fetchActionRequired(): Promise<ActionRequired> {
-  const res = await fetch(`${API_BASE}/api/qa/action-required`, {
+  const res = await fetch(`${getApiBase()}/api/qa/action-required`, {
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch action required: ${res.status}`);
@@ -513,7 +511,7 @@ export async function sendChatMessage(message: string): Promise<{
   response: string;
   timestamp: string;
 }> {
-  const res = await fetch(`${API_BASE}/api/qa/chat`, {
+  const res = await fetch(`${getApiBase()}/api/qa/chat`, {
     method: "POST",
     headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ message }),

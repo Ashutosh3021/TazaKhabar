@@ -1,8 +1,9 @@
+# Fallback when Railway root directory is the repo root (not backend/).
+# Prefer setting Railway Root Directory to "backend" and using backend/Dockerfile.
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Build deps for lxml, scikit-learn, PyMuPDF wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libxml2-dev \
@@ -10,14 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
-# Install CPU-only PyTorch first (avoids huge CUDA wheels during sentence-transformers install)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ .
 
 RUN mkdir -p logs
 
@@ -26,5 +26,4 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-# Shell form so Railway's $PORT is expanded (JSON CMD does not expand $PORT)
 CMD hypercorn src.main:app --bind 0.0.0.0:${PORT:-8000}

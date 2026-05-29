@@ -5,7 +5,7 @@
     },
     "deploy": {
         "healthcheckPath": "/health",
-        "startCommand": "hypercorn src.main:app --bind 0.0.0.0:$PORT",
+        "startCommand": "sh -c 'hypercorn src.main:app --bind 0.0.0.0:${PORT:-8000}'",
         "numReplicas": 1
     }
 }

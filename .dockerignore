@@ -1,0 +1,12 @@
+.next
+node_modules
+.git
+.env
+.env.local
+backend/.venv
+backend/venv
+backend/__pycache__
+backend/.env
+backend/*.db
+backend/logs
+.planning

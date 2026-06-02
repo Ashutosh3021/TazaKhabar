@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")
 
+    # Render / keep-alive (Render free tier idles after inactivity)
+    # If KEEPALIVE_ENABLED is true, the app will periodically send an HTTP GET
+    # to KEEPALIVE_URL (or derived from RENDER_EXTERNAL_URL) to keep the service warm.
+    RENDER_EXTERNAL_URL: str = ""
+    KEEPALIVE_ENABLED: bool = False
+    KEEPALIVE_INTERVAL_SEC: int = 14 * 60
+    KEEPALIVE_URL: str = ""
+
     # Notebook CSV pipeline (job_scraper.ipynb → jobs_output.csv)
     NOTEBOOK_SYNC_ENABLED: bool = True
     NOTEBOOK_SYNC_INTERVAL_SEC: int = 15

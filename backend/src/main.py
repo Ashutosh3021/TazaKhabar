@@ -1,15 +1,24 @@
 import logging
 import sys
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
 
 from src.config import settings
 from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router, csv_loader_router, qa_router
 from src.api import embeddings_router, scrape_router, notebooks_router
 from src.middleware.logging import RequestLoggingMiddleware
+
+# Ensure log directory exists before FileHandler is created (Render filesystem starts empty)
+try:
+    settings.LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    # Fall back to stdout-only logging if we can't create the directory
+    pass
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +26,40 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("logs/tazakhabar.log"),
+        logging.FileHandler(str(settings.LOG_DIR / "tazakhabar.log")),
     ],
 )
 logger = logging.getLogger(__name__)
+
+def _derive_keepalive_url() -> str:
+    if settings.KEEPALIVE_URL:
+        return settings.KEEPALIVE_URL.strip()
+    if settings.RENDER_EXTERNAL_URL:
+        return settings.RENDER_EXTERNAL_URL.rstrip("/") + "/health"
+    return ""
+
+async def _keepalive_loop(stop_event: asyncio.Event) -> None:
+    url = _derive_keepalive_url()
+    if not url:
+        logger.warning("KEEPALIVE_ENABLED=true but no KEEPALIVE_URL / RENDER_EXTERNAL_URL set; keep-alive disabled")
+        return
+
+    interval = max(60, int(settings.KEEPALIVE_INTERVAL_SEC))
+    logger.info("Keep-alive enabled: pinging %s every %ss", url, interval)
+
+    timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        while not stop_event.is_set():
+            try:
+                r = await client.get(url, headers={"User-Agent": "tazakhabar-keepalive/1.0"})
+                logger.info("Keep-alive ping: %s -> %s", url, r.status_code)
+            except Exception as e:
+                logger.warning("Keep-alive ping failed (%s): %s", url, e)
+
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
 
 
 @asynccontextmanager
@@ -74,6 +113,13 @@ async def lifespan(app: FastAPI):
     from src.scheduler import start_scheduler, stop_scheduler
     start_scheduler()
     print(">>> [OK] Scraper scheduler started successfully")
+
+    # Optional keep-alive loop (Render free tier warm-up)
+    keepalive_stop: asyncio.Event | None = None
+    keepalive_task: asyncio.Task | None = None
+    if settings.KEEPALIVE_ENABLED:
+        keepalive_stop = asyncio.Event()
+        keepalive_task = asyncio.create_task(_keepalive_loop(keepalive_stop))
     print("=" * 60 + "\n")
     
     yield
@@ -86,6 +132,14 @@ async def lifespan(app: FastAPI):
     from src.services.notebook_sync_service import stop_notebook_watcher
 
     await stop_notebook_watcher()
+
+    if keepalive_stop is not None:
+        keepalive_stop.set()
+    if keepalive_task is not None:
+        try:
+            await keepalive_task
+        except Exception:
+            logger.exception("Keep-alive task failed during shutdown")
     print(">>> [OK] Scraper scheduler stopped gracefully")
     print(">>> [OK] Shutdown complete")
     print("=" * 60 + "\n")

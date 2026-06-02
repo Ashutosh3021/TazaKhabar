@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: tazakhabar-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_DIR
+        value: logs
+      # Disable notebook polling on Render unless you truly need it.
+      - key: NOTEBOOK_SYNC_ENABLED
+        value: "false"
+      - key: NOTEBOOK_SYNC_INTERVAL_SEC
+        value: "60"
+      # Enable keep-alive pings (see guide for KEEPALIVE_URL).
+      - key: KEEPALIVE_ENABLED
+        value: "true"
+      - key: KEEPALIVE_INTERVAL_SEC
+        value: "840"

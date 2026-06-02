@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")
 
+    # Embeddings / RAG (sentence-transformers + torch). Disable on low-memory hosts.
+    EMBEDDINGS_ENABLED: bool = True
+
     # Render / keep-alive (Render free tier idles after inactivity)
     # If KEEPALIVE_ENABLED is true, the app will periodically send an HTTP GET
     # to KEEPALIVE_URL (or derived from RENDER_EXTERNAL_URL) to keep the service warm.

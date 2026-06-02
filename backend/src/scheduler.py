@@ -6,6 +6,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from src.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Global scheduler instance
@@ -177,16 +179,19 @@ def start_scheduler() -> None:
     )
     print("    + [JOB-5] Show HN -> runs every 2 hours (Firebase)")
 
-    # Daily embeddings backfill: run once per day at 03:00 UTC
-    # BUG FIX [M9]: schedule idempotent embedding backfill to ensure coverage
-    scheduler.add_job(
-        _backfill_embeddings_job,
-        trigger=CronTrigger(hour="3"),
-        id="embeddings_backfill",
-        name="Embeddings Backfill",
-        replace_existing=True,
-    )
-    print("    + [JOB-6] Embeddings Backfill -> runs daily at 03:00 UTC")
+    if settings.EMBEDDINGS_ENABLED:
+        # Daily embeddings backfill: run once per day at 03:00 UTC
+        # BUG FIX [M9]: schedule idempotent embedding backfill to ensure coverage
+        scheduler.add_job(
+            _backfill_embeddings_job,
+            trigger=CronTrigger(hour="3"),
+            id="embeddings_backfill",
+            name="Embeddings Backfill",
+            replace_existing=True,
+        )
+        print("    + [JOB-6] Embeddings Backfill -> runs daily at 03:00 UTC")
+    else:
+        print("    - [SKIP] Embeddings Backfill disabled (EMBEDDINGS_ENABLED=false)")
     
     scheduler.start()
     job_count = len(scheduler.get_jobs())

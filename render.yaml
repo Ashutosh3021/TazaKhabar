@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.render.txt
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     autoDeploy: true
@@ -15,6 +15,9 @@ services:
         value: INFO
       - key: LOG_DIR
         value: logs
+      # Render free tier is too small for torch + sentence-transformers reliably.
+      - key: EMBEDDINGS_ENABLED
+        value: "false"
       # Disable notebook polling on Render unless you truly need it.
       - key: NOTEBOOK_SYNC_ENABLED
         value: "false"

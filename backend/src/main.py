@@ -84,10 +84,13 @@ async def lifespan(app: FastAPI):
         raise
     
     # Load embedding model at startup (CPU-bound, loaded once)
-    print(">>> [STARTUP] Loading embedding model...")
-    from src.services.embedding_service import get_embedding_model
-    model = get_embedding_model()
-    print(">>> [OK] Embedding model loaded")
+    if settings.EMBEDDINGS_ENABLED:
+        print(">>> [STARTUP] Loading embedding model...")
+        from src.services.embedding_service import get_embedding_model
+        model = get_embedding_model()
+        print(">>> [OK] Embedding model loaded")
+    else:
+        print(">>> [STARTUP] Embeddings disabled (EMBEDDINGS_ENABLED=false)")
 
     # Notebook pipeline: jobs_output.csv → database (also polled in background)
     print(">>> [STARTUP] Syncing notebook CSV outputs...")

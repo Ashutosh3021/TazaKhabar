@@ -5,17 +5,22 @@ Uses sentence-transformers (all-MiniLM-L6-v2) for embedding generation.
 import logging
 import uuid
 import asyncio
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import Job, News, Embedding
 
 from src.db.database import async_session
+from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+# sentence-transformers is optional on low-memory deployments (e.g. Render free tier)
+if TYPE_CHECKING:  # pragma: no cover
+    from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -30,13 +35,24 @@ EXPECTED_BYTES = EMBEDDING_DIM * 4  # 4 bytes per float32 = 1536 bytes
 _embedding_model = None
 
 
-def get_embedding_model() -> SentenceTransformer:
+def get_embedding_model() -> Any:
     """
     Get or create the singleton embedding model.
     Loads all-MiniLM-L6-v2 (384 dimensions, 22MB, unit-normalized) on first call.
     """
+    if not settings.EMBEDDINGS_ENABLED:
+        raise RuntimeError("Embeddings are disabled (EMBEDDINGS_ENABLED=false)")
+
     global _embedding_model
     if _embedding_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+        except Exception as e:
+            raise RuntimeError(
+                "sentence-transformers is not installed. "
+                "Install it (and torch) or set EMBEDDINGS_ENABLED=false."
+            ) from e
+
         print(">>> [EMBEDDING] Loading sentence-transformers model (first run takes ~5s)...")
         _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         print(f">>> [OK] Embedding model loaded: all-MiniLM-L6-v2 (384 dims)")

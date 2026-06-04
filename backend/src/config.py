@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     EMAIL_SMTP_PASSWORD: str = ""
     EMAIL_SMTP_USE_TLS: bool = True
     ALLOWED_ORIGINS: str = (
-        "http://localhost:3000,https://tazakhabar.vercel.app,https://*.vercel.app"
+        "http://localhost:3000,https://tazakhabar.vercel.app,https://tazakhabar3021.vercel.app"
     )
     LOG_LEVEL: str = "INFO"
     LOG_DIR: Path = Path("logs")

@@ -187,14 +187,17 @@ print("    + /api/scrape registered")
 app.include_router(notebooks_router)
 print("    + /api/notebooks registered")
 
-# Add CORS middleware
+# Add CORS middleware — must be registered BEFORE other middleware so it wraps all requests.
+# Starlette applies middleware in reverse registration order (last added = outermost),
+# so we add CORS first to ensure it runs outermost and handles OPTIONS preflight.
 print(">>> [SETUP] Configuring CORS middleware...")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Add request logging middleware

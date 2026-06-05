@@ -130,6 +130,8 @@ class Report(Base):
     items_collected: Mapped[int] = mapped_column(Integer, default=0)
     new_items: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="running")  # running, completed, failed
+    # Which scraper produced this report (e.g. "who_is_hiring", "top_stories", "ask_hn", "show_hn")
+    scraper_name: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
 
 
 class Observation(Base):

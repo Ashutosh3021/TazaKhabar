@@ -39,6 +39,7 @@ class AskHNScraper(BaseScraper):
                 items_collected=0,
                 new_items=0,
                 status="running",
+                scraper_name="ask_hn",
             )
             session.add(report)
             await session.flush()

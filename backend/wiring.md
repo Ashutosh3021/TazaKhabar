@@ -200,6 +200,7 @@ All routes are prefixed as below. Interactive docs: `http://localhost:8000/docs`
 | `/api/csv` | CSV stats; `POST /load-jobs` (= notebook sync) |
 | `/api/notebooks` | **`POST /sync`**, `GET /status`, `POST /sync-hn` |
 | `/api/scrape` | `POST /run` — all HN scrapers now |
+| `/api/scrapers` | `GET /status` — real-time scraper progress |
 | `/api/embeddings` | `POST /backfill` |
 
 **Frontend header:** many endpoints accept `X-User-ID` for logged-in behavior.

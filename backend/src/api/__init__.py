@@ -16,6 +16,7 @@ from src.api.embeddings import router as embeddings_router
 from src.api.scrape import router as scrape_router
 from src.api.notebooks import router as notebooks_router
 from src.api.health import router as health_router
+from src.api.scraper_status import router as scraper_status_router
 
 __all__ = [
     "jobs_router",
@@ -33,4 +34,5 @@ __all__ = [
     "scrape_router",
     "notebooks_router",
     "health_router",
+    "scraper_status_router",
 ]

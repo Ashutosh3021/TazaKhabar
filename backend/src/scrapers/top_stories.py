@@ -41,6 +41,7 @@ class TopStoriesScraper(BaseScraper):
                 items_collected=0,
                 new_items=0,
                 status="running",
+                scraper_name="top_stories",
             )
             session.add(report)
             await session.flush()

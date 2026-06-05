@@ -519,3 +519,31 @@ export async function sendChatMessage(message: string): Promise<{
   if (!res.ok) throw new Error(`Failed to send chat message: ${res.status}`);
   return res.json();
 }
+
+// ============================================================================
+// Scraper Status API
+// ============================================================================
+
+export interface ScraperStatus {
+  scraper_id: string;
+  name: string;
+  is_active: boolean;
+  progress_percentage: number;
+  items_scraped: number;
+  items_remaining: number;
+  status: string;
+  last_updated: string | null;
+  next_run: string | null;
+}
+
+/**
+ * Fetch real-time progress status for all HN scrapers.
+ */
+export async function fetchScraperStatus(): Promise<{ scrapers: ScraperStatus[] }> {
+  const res = await fetch(`${getApiBase()}/api/scrapers/status`, {
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Failed to fetch scraper status: ${res.status}`);
+  return res.json();
+}

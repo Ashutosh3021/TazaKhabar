@@ -241,7 +241,7 @@ class WhoIsHiringScraper(BaseScraper):
         print("\n" + "-" * 50)
         print(">>> [WIH-SCRAPER] Starting Who Is Hiring scraper run")
         logger.info("Starting Who Is Hiring scraper run")
-        
+
         # Create report entry
         async with async_session() as session:
             report = Report(
@@ -249,11 +249,12 @@ class WhoIsHiringScraper(BaseScraper):
                 items_collected=0,
                 new_items=0,
                 status="running",
+                scraper_name="who_is_hiring",
             )
             session.add(report)
             await session.commit()
             report_id = report.id
-        
+
         try:
             # Discover latest thread
             print(">>> [WIH-SCRAPER] Step 1: Discovering Who Is Hiring thread via Algolia...")
@@ -262,16 +263,16 @@ class WhoIsHiringScraper(BaseScraper):
                 print(">>> [WIH-SCRAPER] ERROR: No thread discovered. Check Algolia API key and internet connection.")
                 logger.warning("No Who Is Hiring thread found")
                 return {"collected": 0, "new": 0}
-            
+
             thread_id = thread.get("id") or thread.get("objectID")
             thread_title = thread.get("title", "Unknown")[:60]
             print(f">>> [WIH-SCRAPER] Found thread ID={thread_id}: '{thread_title}'")
-            
+
             if not thread_id:
                 print(f">>> [WIH-SCRAPER] ERROR: Thread has no ID field!")
                 logger.error("Thread has no ID")
                 return {"collected": 0, "new": 0}
-            
+
             # Check if this is a new thread
             last_thread_id = self._get_last_thread_id()
             if last_thread_id == int(thread_id):
@@ -280,24 +281,24 @@ class WhoIsHiringScraper(BaseScraper):
                 return {"collected": 0, "new": 0}
             else:
                 print(f">>> [WIH-SCRAPER] New thread detected! Last: {last_thread_id}, Current: {thread_id}")
-            
+
             # Fetch comments via Firebase API
             print(f">>> [WIH-SCRAPER] Step 2: Fetching comments for thread {thread_id} via Firebase...")
-            
+
             # First get the story to find kids (comment IDs)
             story = await self.client.fetch_item(int(thread_id))
             if not story:
                 print(f">>> [WIH-SCRAPER] ERROR: Could not fetch story {thread_id}")
                 return {"collected": 0, "new": 0}
-            
+
             # Get all top-level comment IDs from the story
             comment_ids = story.get("kids", [])
             print(f">>> [WIH-SCRAPER] Found {len(comment_ids)} comment IDs in story")
 
             # Fetch all comments and all descendants (full tree) in parallel
+            # BUG FIX [H2]: fetch entire comment tree (no 100-item cap), with concurrency semaphore
             comments = []
             if comment_ids:
-                # breadth-first traversal to fetch all descendant comments
                 to_fetch = list(comment_ids)
                 fetched_ids = set()
                 sem = 20
@@ -305,11 +306,8 @@ class WhoIsHiringScraper(BaseScraper):
                     batch_ids = to_fetch
                     to_fetch = []
                     fetched = await self.client.fetch_items_batch(batch_ids, semaphore=sem)
-                    # Keep only valid comments with text
                     valid = [c for c in fetched if c and c.get("text")]
                     comments.extend(valid)
-
-                    # enqueue children of fetched items
                     for item in fetched:
                         if not item:
                             continue
@@ -318,12 +316,10 @@ class WhoIsHiringScraper(BaseScraper):
                             if k not in fetched_ids:
                                 to_fetch.append(k)
                                 fetched_ids.add(k)
-
                 print(f">>> [WIH-SCRAPER] Fetched {len(comments)} valid comments (including descendants)")
             else:
                 print(f">>> [WIH-SCRAPER] No comments found in story")
-# BUG FIX [H2]: fetch entire comment tree (no 100-item cap), with concurrency semaphore
-            
+
             # Parse comments into jobs
             print(f">>> [WIH-SCRAPER] Step 3: Parsing {len(comments)} comments into job listings...")
             jobs = []
@@ -335,7 +331,7 @@ class WhoIsHiringScraper(BaseScraper):
                         jobs.append(job)
                 except Exception as e:
                     parse_errors += 1
-            
+
             # Deduplicate by company + title
             seen = set()
             unique_jobs = []
@@ -344,12 +340,12 @@ class WhoIsHiringScraper(BaseScraper):
                 if key not in seen:
                     seen.add(key)
                     unique_jobs.append(job)
-            
+
             print(f">>> [WIH-SCRAPER] Parsed: {len(jobs)} raw jobs -> {len(unique_jobs)} unique (after dedup)")
             if parse_errors > 0:
                 print(f">>> [WIH-SCRAPER] Parse errors: {parse_errors}")
             logger.info(f"Parsed {len(unique_jobs)} unique jobs from {len(comments)} comments")
-            
+
             # Save to database
             print(f">>> [WIH-SCRAPER] Step 4: Saving {len(unique_jobs)} jobs to database...")
             try:
@@ -358,10 +354,10 @@ class WhoIsHiringScraper(BaseScraper):
             except Exception as e:
                 print(f">>> [WIH-SCRAPER] DATABASE ERROR: {e}")
                 raise
-            
+
             # Update report
             self._set_last_thread_id(int(thread_id))
-            
+
             async with async_session() as session:
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
@@ -374,20 +370,20 @@ class WhoIsHiringScraper(BaseScraper):
                     await session.commit()
                 else:
                     logger.warning(f"Could not find report {report_id} to update")
-            
+
             print(f">>> [WIH-SCRAPER] SUCCESS: {new_count} new jobs saved!")
             print(">>> [WIH-SCRAPER] Scraper run completed successfully")
             print("-" * 50 + "\n")
             logger.info(f"Who Is Hiring scraper completed: {new_count} new jobs")
             return {"collected": total, "new": new_count}
-            
+
         except Exception as e:
             print(f">>> [WIH-SCRAPER] ERROR: Scraper failed with exception: {e}")
             print(f">>> [WIH-SCRAPER] ERROR TYPE: {type(e).__name__}")
             import traceback
             print(f">>> [WIH-SCRAPER] TRACE: {traceback.format_exc()}")
             logger.error(f"Who Is Hiring scraper failed: {e}")
-            
+
             async with async_session() as session:
                 from sqlalchemy import select
                 stmt = select(Report).where(Report.id == report_id)
@@ -398,5 +394,5 @@ class WhoIsHiringScraper(BaseScraper):
                     await session.commit()
                 else:
                     logger.warning(f"Could not find report {report_id} to update status to failed")
-            
+
             return {"collected": 0, "new": 0}

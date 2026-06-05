@@ -82,6 +82,44 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f">>> [ERROR] Database initialization failed: {e}")
         raise
+
+    # Check Supabase connection
+    print(">>> [STARTUP] Checking Supabase connection...")
+    from src.db.supabase import supabase_client
+    try:
+        connection_status = await supabase_client.check_supabase_connection()
+        
+        # Storage status
+        if connection_status['storage']['configured']:
+            if connection_status['storage']['connected']:
+                print(">>> [OK] Supabase storage: Connected")
+            else:
+                error_msg = connection_status['storage']['error'] or "Unknown error"
+                print(f">>> [WARN] Supabase storage: Not connected - {error_msg}")
+        else:
+            print(">>> [WARN] Supabase storage: Not configured (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_STORAGE_BUCKET missing)")
+        
+        # Email status
+        if connection_status['email']['configured']:
+            if connection_status['email']['connected']:
+                print(">>> [OK] Supabase email (SMTP): Connected")
+            else:
+                error_msg = connection_status['email']['error'] or "Unknown error"
+                print(f">>> [WARN] Supabase email (SMTP): Not connected - {error_msg}")
+        else:
+            print(">>> [WARN] Supabase email (SMTP): Not configured (EMAIL_SMTP_HOST, EMAIL_SMTP_USER, EMAIL_SMTP_PASSWORD, or SUPABASE_EMAIL_FROM missing)")
+        
+        # Overall status
+        overall_msg = {
+            'connected': 'Supabase connected successfully',
+            'partial': 'Supabase partially connected (some services unavailable)',
+            'disconnected': 'Supabase connection failed',
+            'not_configured': 'Supabase not configured'
+        }
+        print(f">>> [SUPABASE] {overall_msg.get(connection_status['overall_status'], 'Unknown status')}")
+    except Exception as e:
+        print(f">>> [ERROR] Supabase connection check failed: {e}")
+        logger.exception("Supabase connection check error")
     
     # Load embedding model at startup (CPU-bound, loaded once)
     if settings.EMBEDDINGS_ENABLED:

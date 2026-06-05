@@ -151,5 +151,98 @@ class SupabaseClient:
         logger.info("Email sent via SMTP to %s", to)
         return True
 
+    async def check_supabase_connection(self) -> dict:
+        """
+        Check Supabase connection status for storage and email services.
+        
+        Returns a dict with status information:
+        {
+            'storage': {'configured': bool, 'connected': bool, 'error': str | None},
+            'email': {'configured': bool, 'connected': bool, 'error': str | None},
+            'overall_status': 'connected' | 'partial' | 'disconnected'
+        }
+        """
+        result = {
+            'storage': {'configured': False, 'connected': False, 'error': None},
+            'email': {'configured': False, 'connected': False, 'error': None},
+            'overall_status': 'disconnected'
+        }
+
+        # Check storage configuration and connectivity
+        if self.is_storage_configured:
+            result['storage']['configured'] = True
+            try:
+                # Test connectivity by making a HEAD request to the storage bucket
+                url = f"{self.url}/storage/v1/buckets/{self.storage_bucket}"
+                headers = {
+                    "Authorization": f"Bearer {self.service_role_key}",
+                    "apikey": self.service_role_key,
+                }
+                
+                async with httpx.AsyncClient(timeout=10) as client:
+                    response = await client.head(url, headers=headers)
+                
+                if response.status_code in (200, 204, 401, 403):
+                    # 401/403 means auth issue but server is reachable
+                    # 200/204 means success
+                    result['storage']['connected'] = response.status_code in (200, 204)
+                    if response.status_code in (401, 403):
+                        result['storage']['error'] = f"Authentication failed (HTTP {response.status_code}). Check SUPABASE_SERVICE_ROLE_KEY."
+                else:
+                    result['storage']['error'] = f"Unexpected status code: {response.status_code}"
+            except httpx.ConnectError as e:
+                result['storage']['error'] = f"Connection error: {str(e)}"
+            except httpx.TimeoutException as e:
+                result['storage']['error'] = f"Timeout: {str(e)}"
+            except Exception as e:
+                result['storage']['error'] = f"Unexpected error: {str(e)}"
+        
+        # Check email configuration and connectivity
+        if self.is_email_configured:
+            result['email']['configured'] = True
+            try:
+                await asyncio.to_thread(self._check_email_connectivity)
+                result['email']['connected'] = True
+            except smtplib.SMTPException as e:
+                result['email']['error'] = f"SMTP connection failed: {str(e)}"
+            except Exception as e:
+                result['email']['error'] = f"Unexpected error: {str(e)}"
+
+        # Determine overall status
+        configured_services = sum([
+            result['storage']['configured'],
+            result['email']['configured']
+        ])
+        connected_services = sum([
+            result['storage']['connected'],
+            result['email']['connected']
+        ])
+
+        if configured_services == 0:
+            result['overall_status'] = 'not_configured'
+        elif connected_services == configured_services:
+            result['overall_status'] = 'connected'
+        elif connected_services > 0:
+            result['overall_status'] = 'partial'
+        else:
+            result['overall_status'] = 'disconnected'
+
+        return result
+
+    def _check_email_connectivity(self) -> None:
+        """Synchronously check SMTP connectivity."""
+        context = ssl.create_default_context()
+        try:
+            if self.smtp_port == 465:
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=10) as smtp:
+                    smtp.login(self.smtp_user, self.smtp_password)
+            else:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as smtp:
+                    if self.smtp_use_tls:
+                        smtp.starttls(context=context)
+                    smtp.login(self.smtp_user, self.smtp_password)
+        except Exception as e:
+            raise RuntimeError(f"SMTP connection failed: {str(e)}")
+
 
 supabase_client = SupabaseClient()

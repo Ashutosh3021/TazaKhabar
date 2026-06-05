@@ -111,6 +111,57 @@ async def _migrate_missing_columns(conn) -> None:
                 logger.warning(f"[MIGRATION] Could not add {table_name}.{col.name}: {e}")
 
 
+async def _migrate_missing_columns_postgres(conn) -> None:
+    """
+    Add any model columns that are missing from the live Postgres schema.
+    Uses `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` which is safe to run
+    on every startup (idempotent).
+    """
+    from . import models  # noqa: F401
+    from sqlalchemy import inspect
+
+    # Map SQLAlchemy type → Postgres DDL type string
+    def _pg_type(col_type: str) -> str:
+        upper = col_type.upper()
+        if "LARGEBINARY" in upper or "BYTEA" in upper or "BLOB" in upper:
+            return "BYTEA"
+        if "BOOLEAN" in upper or "BOOL" in upper:
+            return "BOOLEAN"
+        if "FLOAT" in upper or "REAL" in upper or "DOUBLE" in upper:
+            return "DOUBLE PRECISION"
+        if "INTEGER" in upper or "INT" in upper:
+            return "INTEGER"
+        if "JSON" in upper or "JSONB" in upper:
+            return "JSONB"
+        if "TEXT" in upper:
+            return "TEXT"
+        # VARCHAR(n) — keep as-is
+        if "VARCHAR" in upper or "STRING" in upper or "CHAR" in upper:
+            return col_type  # SQLAlchemy renders e.g. "VARCHAR(50)"
+        return "TEXT"
+
+    for table_name, table in Base.metadata.tables.items():
+        for col in table.columns:
+            pg_type = _pg_type(str(col.type))
+            # Build a literal DEFAULT clause if the column has a simple scalar default
+            default_clause = ""
+            raw_arg = getattr(col.default, "arg", None) if col.default is not None else None
+            if raw_arg is not None and not callable(raw_arg):
+                val = str(raw_arg)
+                if val not in ("None", "null"):
+                    default_clause = f" DEFAULT {val}"
+
+            sql = (
+                f"ALTER TABLE {table_name} "
+                f"ADD COLUMN IF NOT EXISTS {col.name} {pg_type}{default_clause}"
+            )
+            try:
+                await conn.execute(text(sql))
+                logger.debug("[MIGRATION] Ensured column %s.%s (%s)", table_name, col.name, pg_type)
+            except Exception as e:
+                logger.warning("[MIGRATION] Could not ensure %s.%s: %s", table_name, col.name, e)
+
+
 async def create_all_tables() -> None:
     """Create all tables defined in models, then migrate any missing columns."""
     from . import models  # noqa: F401
@@ -119,9 +170,12 @@ async def create_all_tables() -> None:
         await conn.run_sync(Base.metadata.create_all)
         logger.info("All database tables created/verified")
 
-        # Step 2: SQLite-only column migration (uses PRAGMA; not valid on Postgres)
+        # Step 2: column migration — driver-specific
         if "sqlite" in settings.DATABASE_URL:
             await _migrate_missing_columns(conn)
+        else:
+            # Postgres (and any other driver): use ADD COLUMN IF NOT EXISTS
+            await _migrate_missing_columns_postgres(conn)
 
     logger.info("All database tables and columns are up to date")
 

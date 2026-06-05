@@ -3,74 +3,116 @@ Scraper status API endpoint.
 
 GET /api/scrapers/status
 
-Returns real-time progress information for all known scrapers.
+Returns real-time progress for all scrapers across two pipelines:
 
-Data sources (in priority order per scraper):
-  1. Latest Report row WHERE scraper_name = <id>  (new tagged runs)
-  2. MAX(scraped_at) + COUNT from news/jobs tables (works for all historic data)
-  3. APScheduler job metadata for next_run
+  HN Pipeline  (APScheduler, every 2h):
+    who_is_hiring  → jobs table  (hn_item_id IS NOT NULL)
+    top_stories    → news table  (type = 'top_story')
+    ask_hn         → news table  (type = 'ask_hn')
+    show_hn        → news table  (type = 'show_hn')
+
+  Notebook Pipeline  (job_scraper.ipynb → jobs_output.csv → CSV watcher):
+    ambitionbox_jobs → jobs table (hn_item_id IS NULL)
+                       Progress read from .notebook_sync_state.json
+                       Total = companies in company_data.csv (9 497 currently)
 
 Response shape
 --------------
 {
   "scrapers": [
     {
-      "scraper_id":          str,   # scheduler job ID
-      "name":                str,   # human-readable label
-      "is_active":           bool,  # True while a "running" Report exists
-      "progress_percentage": int,   # 0-100
-      "items_scraped":       int,   # total rows for this scraper in DB
-      "items_remaining":     int,   # max(0, expected_total - items_scraped)
-      "status":              str,   # "running"|"completed"|"failed"|"never_run"
-      "last_updated":        str,   # ISO-8601 UTC of most recent scrape
+      "scraper_id":          str,
+      "name":                str,
+      "is_active":           bool,
+      "progress_percentage": int,    # 0-100
+      "items_scraped":       int,
+      "items_remaining":     int,
+      "status":              str,    # "running"|"completed"|"failed"|"never_run"
+      "last_updated":        str | null,
       "next_run":            str | null
-    },
-    ...
+    }, ...
   ]
 }
 """
 
+from __future__ import annotations
+
+import json
+import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
 from src.db.models import Job, News, Report
 from src.scheduler import scheduler
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/scrapers", tags=["scrapers"])
 
 # ---------------------------------------------------------------------------
-# Known batch-size ceilings — used for progress_percentage / items_remaining.
-# who_is_hiring is unbounded; 500 is a conservative upper bound per thread.
+# Notebook sync-state file (written by notebook_sync_service)
 # ---------------------------------------------------------------------------
-_EXPECTED_TOTALS: dict[str, int] = {
-    "who_is_hiring": 500,
-    "top_stories":   30,
-    "ask_hn":        200,
-    "show_hn":       200,
-}
-
-_DISPLAY_NAMES: dict[str, str] = {
-    "who_is_hiring": "Who Is Hiring",
-    "top_stories":   "Top Stories",
-    "ask_hn":        "Ask HN",
-    "show_hn":       "Show HN",
-}
-
-# news.type values that map to each scraper
-_NEWS_TYPE: dict[str, str] = {
-    "top_stories": "top_story",
-    "ask_hn":      "ask_hn",
-    "show_hn":     "show_hn",
-}
-
+_STATE_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "NoteBooks"
+    / ".notebook_sync_state.json"
+)
+_COMPANY_CSV_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "NoteBooks" / "company_data.csv"
+)
 
 # ---------------------------------------------------------------------------
-# Pydantic response models
+# Scraper registry
+# ---------------------------------------------------------------------------
+# "pipeline" is either "hn" or "notebook"
+# "news_type" (hn pipeline only): maps to news.type column
+# "expected": default ceiling for progress calc
+_SCRAPERS: list[dict] = [
+    {
+        "scraper_id": "ambitionbox_jobs",
+        "name": "AmbitionBox Jobs (Notebook)",
+        "pipeline": "notebook",
+        "expected": 9497,          # total companies in company_data.csv
+    },
+    {
+        "scraper_id": "who_is_hiring",
+        "name": "Who Is Hiring (HN)",
+        "pipeline": "hn",
+        "news_type": None,          # goes to jobs table
+        "expected": 500,
+    },
+    {
+        "scraper_id": "top_stories",
+        "name": "Top Stories (HN)",
+        "pipeline": "hn",
+        "news_type": "top_story",
+        "expected": 30,
+    },
+    {
+        "scraper_id": "ask_hn",
+        "name": "Ask HN",
+        "pipeline": "hn",
+        "news_type": "ask_hn",
+        "expected": 200,
+    },
+    {
+        "scraper_id": "show_hn",
+        "name": "Show HN",
+        "pipeline": "hn",
+        "news_type": "show_hn",
+        "expected": 200,
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
 # ---------------------------------------------------------------------------
 
 class ScraperStatusItem(BaseModel):
@@ -101,12 +143,32 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat()
 
 
-def _compute_progress(items_scraped: int, expected: int) -> tuple[int, int]:
+def _progress(scraped: int, expected: int) -> tuple[int, int]:
+    """(progress_pct, items_remaining) both clamped sensibly."""
     if expected <= 0:
-        return (100 if items_scraped > 0 else 0), 0
-    pct = min(100, round(items_scraped * 100 / expected))
-    remaining = max(0, expected - items_scraped)
+        return (100 if scraped > 0 else 0), 0
+    pct = min(100, round(scraped * 100 / expected))
+    remaining = max(0, expected - scraped)
     return pct, remaining
+
+
+def _read_notebook_state() -> dict:
+    try:
+        return json.loads(_STATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _count_company_csv() -> int:
+    """Count data rows in company_data.csv (cached cheaply)."""
+    try:
+        import csv as csv_mod
+        with _COMPANY_CSV_PATH.open("r", encoding="utf-8", newline="") as f:
+            reader = csv_mod.reader(f)
+            next(reader, None)  # skip header
+            return sum(1 for _ in reader)
+    except Exception:
+        return 9497  # fall back to known value
 
 
 # ---------------------------------------------------------------------------
@@ -118,23 +180,17 @@ def _compute_progress(items_scraped: int, expected: int) -> tuple[int, int]:
     response_model=ScraperStatusResponse,
     summary="Scraper progress status",
     description=(
-        "Returns the real-time status of every HN scraper. "
-        "Uses tagged Report rows for new runs and falls back to "
-        "scraped_at timestamps in news/jobs tables for historic data."
+        "Returns real-time progress for all scrapers — both the HN pipeline "
+        "(who_is_hiring, top_stories, ask_hn, show_hn) and the AmbitionBox "
+        "notebook pipeline (job_scraper.ipynb → jobs_output.csv)."
     ),
 )
 async def get_scraper_status(
     db: AsyncSession = Depends(get_db),
 ) -> ScraperStatusResponse:
-    """
-    Build per-scraper status from three sources:
-      - Report rows tagged with scraper_name (new runs after migration)
-      - MAX(scraped_at) / COUNT from news & jobs tables (all historic data)
-      - APScheduler job list for next_run_time and is_running state
-    """
     try:
         # ------------------------------------------------------------------ #
-        # 1. Tagged Reports: latest row per scraper_name (new runs only)      #
+        # 1. Tagged Reports — latest per scraper_name (post-migration runs)   #
         # ------------------------------------------------------------------ #
         tagged_subq = (
             select(
@@ -158,50 +214,68 @@ async def get_scraper_status(
         }
 
         # ------------------------------------------------------------------ #
-        # 2. Active (running) report — any scraper currently mid-run          #
+        # 2. Active (currently running) scrapers from Report table            #
         # ------------------------------------------------------------------ #
-        active_stmt = (
-            select(Report.scraper_name)
-            .where(
+        active_result = await db.execute(
+            select(Report.scraper_name).where(
                 Report.status == "running",
                 Report.scraper_name.isnot(None),
             )
         )
-        active_result = await db.execute(active_stmt)
-        active_scrapers: set[str] = {
-            row[0] for row in active_result.all() if row[0]
-        }
+        active_scrapers: set[str] = {r[0] for r in active_result.all() if r[0]}
 
         # ------------------------------------------------------------------ #
-        # 3. Fallback: stats from news / jobs tables (always populated)       #
+        # 3. HN fallback: news table stats per type + HN jobs count           #
         # ------------------------------------------------------------------ #
-        # news table: (type, count, max scraped_at)
-        news_stats_stmt = select(
-            News.type,
-            func.count(News.id).label("cnt"),
-            func.max(News.scraped_at).label("last_scraped"),
-        ).group_by(News.type)
-        news_stats_result = await db.execute(news_stats_stmt)
-        # keyed by news.type  e.g. "top_story", "ask_hn", "show_hn"
+        news_stats_result = await db.execute(
+            select(
+                News.type,
+                func.count(News.id).label("cnt"),
+                func.max(News.scraped_at).label("last_scraped"),
+            ).group_by(News.type)
+        )
         news_stats: dict[str, dict] = {
             row.type: {"count": row.cnt, "last_scraped": row.last_scraped}
             for row in news_stats_result.all()
         }
 
-        # jobs table: count + max scraped_at (all from who_is_hiring)
-        jobs_stats_stmt = select(
-            func.count(Job.id).label("cnt"),
-            func.max(Job.scraped_at).label("last_scraped"),
+        # HN jobs: hn_item_id IS NOT NULL
+        hn_jobs_result = await db.execute(
+            select(
+                func.count(Job.id).label("cnt"),
+                func.max(Job.scraped_at).label("last_scraped"),
+            ).where(Job.hn_item_id.isnot(None))
         )
-        jobs_stats_result = await db.execute(jobs_stats_stmt)
-        jobs_row = jobs_stats_result.one_or_none()
-        jobs_stats = {
-            "count": jobs_row.cnt if jobs_row else 0,
-            "last_scraped": jobs_row.last_scraped if jobs_row else None,
+        hn_jobs_row = hn_jobs_result.one_or_none()
+        hn_jobs_stats = {
+            "count": hn_jobs_row.cnt if hn_jobs_row else 0,
+            "last_scraped": hn_jobs_row.last_scraped if hn_jobs_row else None,
         }
 
         # ------------------------------------------------------------------ #
-        # 4. APScheduler: next_run_time per job                               #
+        # 4. Notebook pipeline: AmbitionBox CSV jobs (hn_item_id IS NULL)     #
+        # ------------------------------------------------------------------ #
+        nb_jobs_result = await db.execute(
+            select(
+                func.count(Job.id).label("cnt"),
+                func.max(Job.scraped_at).label("last_scraped"),
+            ).where(Job.hn_item_id.is_(None))
+        )
+        nb_jobs_row = nb_jobs_result.one_or_none()
+        nb_jobs_in_db = nb_jobs_row.cnt if nb_jobs_row else 0
+        nb_last_scraped = nb_jobs_row.last_scraped if nb_jobs_row else None
+
+        # Notebook sync state gives us CSV row count (= companies attempted)
+        nb_state = _read_notebook_state()
+        nb_csv_info = nb_state.get("jobs_output.csv", {})
+        nb_csv_rows = int(nb_csv_info.get("row_count", 0))  # CSV rows written so far
+        nb_last_sync = nb_csv_info.get("last_sync")
+
+        # Total expected = total companies in company_data.csv
+        nb_total_companies = _count_company_csv()
+
+        # ------------------------------------------------------------------ #
+        # 5. APScheduler next_run map                                         #
         # ------------------------------------------------------------------ #
         next_run_map: dict[str, str | None] = {}
         try:
@@ -211,46 +285,73 @@ async def get_scraper_status(
             pass
 
         # ------------------------------------------------------------------ #
-        # 5. Assemble per-scraper status                                      #
+        # 6. Assemble per-scraper status items                                #
         # ------------------------------------------------------------------ #
         items: list[ScraperStatusItem] = []
 
-        for scraper_id in _EXPECTED_TOTALS:
-            expected = _EXPECTED_TOTALS[scraper_id]
-            name = _DISPLAY_NAMES[scraper_id]
+        for cfg in _SCRAPERS:
+            scraper_id: str = cfg["scraper_id"]
+            name: str = cfg["name"]
+            pipeline: str = cfg["pipeline"]
+            expected: int = cfg["expected"]
             is_active = scraper_id in active_scrapers
 
-            # --- Try tagged Report first ---
-            report = tagged_reports.get(scraper_id)
-            if report is not None:
-                scraped  = report.items_collected or 0
-                status   = report.status or "unknown"
-                last_upd = _iso(report.run_at)
-            else:
-                # --- Fallback: infer from actual table data ---
-                if scraper_id == "who_is_hiring":
-                    scraped      = jobs_stats["count"] or 0
-                    last_scraped = jobs_stats["last_scraped"]
+            # ---- Notebook pipeline (AmbitionBox) ---- #
+            if pipeline == "notebook":
+                # Items scraped = jobs loaded into DB from CSV
+                scraped = nb_jobs_in_db
+                # Use company CSV total as the ceiling (how many companies to go)
+                expected = nb_total_companies or expected
+                # last_updated: prefer last_sync timestamp, fall back to DB scraped_at
+                last_upd = nb_last_sync or _iso(nb_last_scraped)
+                # Status: if we have CSV rows written, it has run
+                if nb_csv_rows > 0 or scraped > 0:
+                    status = "running" if is_active else "completed"
                 else:
-                    news_type    = _NEWS_TYPE[scraper_id]
-                    row          = news_stats.get(news_type, {})
-                    scraped      = row.get("count", 0) or 0
-                    last_scraped = row.get("last_scraped")
+                    status = "never_run"
 
-                last_upd = _iso(last_scraped)
-                # If we found actual data in the DB, mark as completed
-                status = "completed" if scraped > 0 else "never_run"
+                # Progress against total companies (CSV rows ~ companies attempted)
+                progress_count = nb_csv_rows if nb_csv_rows > 0 else scraped
+                pct, remaining = _progress(progress_count, expected)
 
-            # Clamp progress
+                # Notebook has no APScheduler job — it runs manually / via watcher
+                next_run = None
+
+            # ---- HN pipeline ---- #
+            else:
+                news_type: str | None = cfg.get("news_type")
+                report = tagged_reports.get(scraper_id)
+
+                if report is not None:
+                    # Use tagged Report (accurate for post-migration runs)
+                    scraped = report.items_collected or 0
+                    status = report.status or "unknown"
+                    last_upd = _iso(report.run_at)
+                else:
+                    # Fallback: query actual table data
+                    if news_type is None:
+                        # who_is_hiring → jobs table (HN only)
+                        scraped = hn_jobs_stats["count"] or 0
+                        last_upd = _iso(hn_jobs_stats["last_scraped"])
+                    else:
+                        row = news_stats.get(news_type, {})
+                        scraped = row.get("count", 0) or 0
+                        last_upd = _iso(row.get("last_scraped"))
+
+                    status = "completed" if scraped > 0 else "never_run"
+
+                pct, remaining = _progress(scraped, expected)
+                next_run = next_run_map.get(scraper_id)
+
+            # Never show 100% while still running
+            if is_active:
+                status = "running"
+                if pct >= 100:
+                    pct = 99
+
+            # Completed with 0 new items this run is still done (dedup skipped all)
             if status == "completed" and scraped == 0:
                 pct, remaining = 100, 0
-            else:
-                pct, remaining = _compute_progress(scraped, expected)
-
-            # Never show 100 % while still running
-            if is_active and pct >= 100:
-                pct = 99
-                status = "running"
 
             items.append(
                 ScraperStatusItem(
@@ -262,13 +363,14 @@ async def get_scraper_status(
                     items_remaining=remaining,
                     status=status,
                     last_updated=last_upd,
-                    next_run=next_run_map.get(scraper_id),
+                    next_run=next_run,
                 )
             )
 
         return ScraperStatusResponse(scrapers=items)
 
     except Exception as exc:
+        logger.exception("Scraper status fetch failed")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch scraper status: {exc}",

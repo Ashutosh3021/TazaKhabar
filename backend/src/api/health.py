@@ -6,7 +6,7 @@ Provides detailed health and connection status information for monitoring.
 from datetime import datetime
 from typing import Dict, Any
 
-from fastapi import APIRouter, logger
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from src.db.supabase import supabase_client

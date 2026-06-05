@@ -31,18 +31,37 @@ export interface SystemHealthStatus {
 }
 
 /**
+ * Get API base URL (same as in api.ts)
+ */
+function getApiBase(): string {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV !== "production") {
+    return "http://localhost:8000";
+  }
+  // Fallback for development without env var
+  return "http://localhost:8000";
+}
+
+/**
  * Fetch Supabase health status from the backend
  */
 export async function fetchSupabaseHealth(): Promise<SupabaseHealthStatus | null> {
   try {
-    const response = await fetch('/health/supabase');
+    const apiBase = getApiBase();
+    const url = `${apiBase}/health/supabase`;
+    console.debug('[TazaKhabar] Fetching Supabase health from:', url);
+    const response = await fetch(url);
     if (!response.ok) {
-      console.error('[TazaKhabar] Health check failed:', response.statusText);
+      const error = `Health check failed: ${response.status} ${response.statusText}. URL: ${url}`;
+      console.error('[TazaKhabar]', error);
+      console.warn('[TazaKhabar] Make sure NEXT_PUBLIC_API_URL is set correctly in Vercel (should be your Railway backend URL)');
       return null;
     }
     return await response.json();
   } catch (error) {
     console.error('[TazaKhabar] Failed to fetch Supabase health:', error);
+    console.warn('[TazaKhabar] Make sure backend is running and NEXT_PUBLIC_API_URL is configured');
     return null;
   }
 }
@@ -52,14 +71,20 @@ export async function fetchSupabaseHealth(): Promise<SupabaseHealthStatus | null
  */
 export async function fetchSystemHealth(): Promise<SystemHealthStatus | null> {
   try {
-    const response = await fetch('/health/detailed');
+    const apiBase = getApiBase();
+    const url = `${apiBase}/health/detailed`;
+    console.debug('[TazaKhabar] Fetching system health from:', url);
+    const response = await fetch(url);
     if (!response.ok) {
-      console.error('[TazaKhabar] System health check failed:', response.statusText);
+      const error = `System health check failed: ${response.status} ${response.statusText}. URL: ${url}`;
+      console.error('[TazaKhabar]', error);
+      console.warn('[TazaKhabar] Make sure NEXT_PUBLIC_API_URL is set correctly in Vercel');
       return null;
     }
     return await response.json();
   } catch (error) {
     console.error('[TazaKhabar] Failed to fetch system health:', error);
+    console.warn('[TazaKhabar] Make sure backend is running and NEXT_PUBLIC_API_URL is configured');
     return null;
   }
 }
@@ -174,12 +199,48 @@ export async function checkSystemHealthAndLog(): Promise<void> {
 }
 
 /**
+ * Display current API configuration for debugging
+ */
+export function showApiConfig(): void {
+  const apiBase = getApiBase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const hasEnvVar = !!process.env.NEXT_PUBLIC_API_URL;
+
+  console.group('%c🔧 TazaKhabar API Configuration', 'color: #f59e0b; font-weight: bold; font-size: 14px;');
+  
+  console.log('%cEnvironment:', 'font-weight: bold;');
+  console.log(`  NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`  NEXT_PUBLIC_API_URL: ${hasEnvVar ? process.env.NEXT_PUBLIC_API_URL : '(NOT SET)'}`);
+  
+  console.log('%cResolved Configuration:', 'font-weight: bold;');
+  const configColor = hasEnvVar ? 'color: #22c55e;' : (isProduction ? 'color: #ef4444;' : 'color: #eab308;');
+  console.log(`%c  API Base URL: ${apiBase}`, configColor);
+  console.log(`  Status: ${hasEnvVar ? '✓ Set' : (isProduction ? '✗ NOT SET (will fail in production)' : '⚠️ Using local fallback')}`);
+  
+  console.log('%cTesting Connection:', 'font-weight: bold;');
+  console.log(`  Try calling: tazaCheckSupabase()`);
+  console.log(`  Or manually: fetch('${apiBase}/health/supabase').then(r => console.log(r.status, r.url))`);
+  
+  if (!hasEnvVar && isProduction) {
+    console.warn(
+      '%c⚠️ WARNING: NEXT_PUBLIC_API_URL not set in production!\n' +
+      'The health check will fail. Set this environment variable in Vercel:\n' +
+      '  NEXT_PUBLIC_API_URL = https://your-railway-backend.up.railway.app',
+      'color: #ef4444; font-weight: bold; font-size: 12px;'
+    );
+  }
+  
+  console.groupEnd();
+}
+
+/**
  * Add a global function to check health from browser console
  * Usage: window.tazaCheckHealth() or window.tazaCheckSupabase()
  */
 if (typeof window !== 'undefined') {
   (window as any).tazaCheckSupabase = checkSupabaseAndLog;
   (window as any).tazaCheckHealth = checkSystemHealthAndLog;
+  (window as any).tazaShowConfig = showApiConfig;
   
   console.log(
     '%c💡 TazaKhabar Health Commands Available:',
@@ -187,6 +248,7 @@ if (typeof window !== 'undefined') {
   );
   console.log('   👉 Type "tazaCheckSupabase()" to check Supabase status');
   console.log('   👉 Type "tazaCheckHealth()" to check full system health');
+  console.log('   👉 Type "tazaShowConfig()" to show API configuration');
 }
 
 export default {
@@ -196,4 +258,5 @@ export default {
   logSystemHealth,
   checkSupabaseAndLog,
   checkSystemHealthAndLog,
+  showApiConfig,
 };

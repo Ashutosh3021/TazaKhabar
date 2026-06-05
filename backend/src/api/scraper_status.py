@@ -3,23 +3,27 @@ Scraper status API endpoint.
 
 GET /api/scrapers/status
 
-Returns real-time progress information for all known scrapers, built from the
-latest Report row per scraper_name combined with APScheduler job metadata.
+Returns real-time progress information for all known scrapers.
+
+Data sources (in priority order per scraper):
+  1. Latest Report row WHERE scraper_name = <id>  (new tagged runs)
+  2. MAX(scraped_at) + COUNT from news/jobs tables (works for all historic data)
+  3. APScheduler job metadata for next_run
 
 Response shape
 --------------
 {
   "scrapers": [
     {
-      "scraper_id":          str,   # scheduler job ID / scraper_name
+      "scraper_id":          str,   # scheduler job ID
       "name":                str,   # human-readable label
-      "is_active":           bool,  # True while status == "running"
+      "is_active":           bool,  # True while a "running" Report exists
       "progress_percentage": int,   # 0-100
-      "items_scraped":       int,   # items_collected from latest Report
+      "items_scraped":       int,   # total rows for this scraper in DB
       "items_remaining":     int,   # max(0, expected_total - items_scraped)
-      "status":              str,   # "running" | "completed" | "failed" | "never_run"
-      "last_updated":        str,   # ISO-8601 UTC timestamp of last run_at
-      "next_run":            str | null  # ISO-8601 UTC of next scheduled run
+      "status":              str,   # "running"|"completed"|"failed"|"never_run"
+      "last_updated":        str,   # ISO-8601 UTC of most recent scrape
+      "next_run":            str | null
     },
     ...
   ]
@@ -27,37 +31,41 @@ Response shape
 """
 
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_db
-from src.db.models import Report
+from src.db.models import Job, News, Report
 from src.scheduler import scheduler
 
 router = APIRouter(prefix="/api/scrapers", tags=["scrapers"])
 
 # ---------------------------------------------------------------------------
-# Expected total items per scraper (based on batch sizes in each scraper).
-# Used to compute progress_percentage and items_remaining.
-# Top-stories fetches 30 IDs and then filters by score; we use 30 as the
-# ceiling.  Who Is Hiring is variable; we use 500 as a reasonable upper bound.
+# Known batch-size ceilings — used for progress_percentage / items_remaining.
+# who_is_hiring is unbounded; 500 is a conservative upper bound per thread.
 # ---------------------------------------------------------------------------
 _EXPECTED_TOTALS: dict[str, int] = {
     "who_is_hiring": 500,
-    "top_stories": 30,
-    "ask_hn": 200,
-    "show_hn": 200,
+    "top_stories":   30,
+    "ask_hn":        200,
+    "show_hn":       200,
 }
 
 _DISPLAY_NAMES: dict[str, str] = {
     "who_is_hiring": "Who Is Hiring",
-    "top_stories": "Top Stories",
-    "ask_hn": "Ask HN",
-    "show_hn": "Show HN",
+    "top_stories":   "Top Stories",
+    "ask_hn":        "Ask HN",
+    "show_hn":       "Show HN",
+}
+
+# news.type values that map to each scraper
+_NEWS_TYPE: dict[str, str] = {
+    "top_stories": "top_story",
+    "ask_hn":      "ask_hn",
+    "show_hn":     "show_hn",
 }
 
 
@@ -82,11 +90,10 @@ class ScraperStatusResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Helper
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _iso(dt: datetime | None) -> str | None:
-    """Return an ISO-8601 UTC string or None."""
     if dt is None:
         return None
     if dt.tzinfo is None:
@@ -95,10 +102,8 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 def _compute_progress(items_scraped: int, expected: int) -> tuple[int, int]:
-    """Return (progress_percentage, items_remaining) clamped to [0, 100]."""
     if expected <= 0:
-        pct = 100 if items_scraped > 0 else 0
-        return pct, 0
+        return (100 if items_scraped > 0 else 0), 0
     pct = min(100, round(items_scraped * 100 / expected))
     remaining = max(0, expected - items_scraped)
     return pct, remaining
@@ -113,22 +118,25 @@ def _compute_progress(items_scraped: int, expected: int) -> tuple[int, int]:
     response_model=ScraperStatusResponse,
     summary="Scraper progress status",
     description=(
-        "Returns the real-time status of every HN scraper: whether it is "
-        "currently active, how many items have been scraped, estimated "
-        "progress percentage, items remaining, and the next scheduled run time."
+        "Returns the real-time status of every HN scraper. "
+        "Uses tagged Report rows for new runs and falls back to "
+        "scraped_at timestamps in news/jobs tables for historic data."
     ),
 )
 async def get_scraper_status(
     db: AsyncSession = Depends(get_db),
 ) -> ScraperStatusResponse:
     """
-    Query the latest Report row for each scraper and combine with
-    APScheduler metadata to build a progress report for all scrapers.
+    Build per-scraper status from three sources:
+      - Report rows tagged with scraper_name (new runs after migration)
+      - MAX(scraped_at) / COUNT from news & jobs tables (all historic data)
+      - APScheduler job list for next_run_time and is_running state
     """
     try:
-        # --- 1. Fetch the most recent Report per scraper_name ---
-        # Subquery: max run_at per scraper_name
-        subq = (
+        # ------------------------------------------------------------------ #
+        # 1. Tagged Reports: latest row per scraper_name (new runs only)      #
+        # ------------------------------------------------------------------ #
+        tagged_subq = (
             select(
                 Report.scraper_name,
                 func.max(Report.run_at).label("latest_run_at"),
@@ -137,62 +145,112 @@ async def get_scraper_status(
             .group_by(Report.scraper_name)
             .subquery()
         )
-
-        stmt = select(Report).join(
-            subq,
-            (Report.scraper_name == subq.c.scraper_name)
-            & (Report.run_at == subq.c.latest_run_at),
+        tagged_stmt = select(Report).join(
+            tagged_subq,
+            (Report.scraper_name == tagged_subq.c.scraper_name)
+            & (Report.run_at == tagged_subq.c.latest_run_at),
         )
-        result = await db.execute(stmt)
-        latest_reports: dict[str, Report] = {
-            r.scraper_name: r for r in result.scalars().all() if r.scraper_name
+        tagged_result = await db.execute(tagged_stmt)
+        tagged_reports: dict[str, Report] = {
+            r.scraper_name: r
+            for r in tagged_result.scalars().all()
+            if r.scraper_name
         }
 
-        # --- 2. Build next_run lookup from APScheduler ---
+        # ------------------------------------------------------------------ #
+        # 2. Active (running) report — any scraper currently mid-run          #
+        # ------------------------------------------------------------------ #
+        active_stmt = (
+            select(Report.scraper_name)
+            .where(
+                Report.status == "running",
+                Report.scraper_name.isnot(None),
+            )
+        )
+        active_result = await db.execute(active_stmt)
+        active_scrapers: set[str] = {
+            row[0] for row in active_result.all() if row[0]
+        }
+
+        # ------------------------------------------------------------------ #
+        # 3. Fallback: stats from news / jobs tables (always populated)       #
+        # ------------------------------------------------------------------ #
+        # news table: (type, count, max scraped_at)
+        news_stats_stmt = select(
+            News.type,
+            func.count(News.id).label("cnt"),
+            func.max(News.scraped_at).label("last_scraped"),
+        ).group_by(News.type)
+        news_stats_result = await db.execute(news_stats_stmt)
+        # keyed by news.type  e.g. "top_story", "ask_hn", "show_hn"
+        news_stats: dict[str, dict] = {
+            row.type: {"count": row.cnt, "last_scraped": row.last_scraped}
+            for row in news_stats_result.all()
+        }
+
+        # jobs table: count + max scraped_at (all from who_is_hiring)
+        jobs_stats_stmt = select(
+            func.count(Job.id).label("cnt"),
+            func.max(Job.scraped_at).label("last_scraped"),
+        )
+        jobs_stats_result = await db.execute(jobs_stats_stmt)
+        jobs_row = jobs_stats_result.one_or_none()
+        jobs_stats = {
+            "count": jobs_row.cnt if jobs_row else 0,
+            "last_scraped": jobs_row.last_scraped if jobs_row else None,
+        }
+
+        # ------------------------------------------------------------------ #
+        # 4. APScheduler: next_run_time per job                               #
+        # ------------------------------------------------------------------ #
         next_run_map: dict[str, str | None] = {}
         try:
             for job in scheduler.get_jobs():
                 next_run_map[job.id] = _iso(job.next_run_time)
         except Exception:
-            pass  # scheduler may not be running in test environments
+            pass
 
-        # --- 3. Assemble status for every known scraper ---
+        # ------------------------------------------------------------------ #
+        # 5. Assemble per-scraper status                                      #
+        # ------------------------------------------------------------------ #
         items: list[ScraperStatusItem] = []
+
         for scraper_id in _EXPECTED_TOTALS:
-            report = latest_reports.get(scraper_id)
             expected = _EXPECTED_TOTALS[scraper_id]
-            name = _DISPLAY_NAMES.get(scraper_id, scraper_id)
+            name = _DISPLAY_NAMES[scraper_id]
+            is_active = scraper_id in active_scrapers
 
-            if report is None:
-                # Scraper has never run (fresh DB)
-                items.append(
-                    ScraperStatusItem(
-                        scraper_id=scraper_id,
-                        name=name,
-                        is_active=False,
-                        progress_percentage=0,
-                        items_scraped=0,
-                        items_remaining=expected,
-                        status="never_run",
-                        last_updated=None,
-                        next_run=next_run_map.get(scraper_id),
-                    )
-                )
-                continue
+            # --- Try tagged Report first ---
+            report = tagged_reports.get(scraper_id)
+            if report is not None:
+                scraped  = report.items_collected or 0
+                status   = report.status or "unknown"
+                last_upd = _iso(report.run_at)
+            else:
+                # --- Fallback: infer from actual table data ---
+                if scraper_id == "who_is_hiring":
+                    scraped      = jobs_stats["count"] or 0
+                    last_scraped = jobs_stats["last_scraped"]
+                else:
+                    news_type    = _NEWS_TYPE[scraper_id]
+                    row          = news_stats.get(news_type, {})
+                    scraped      = row.get("count", 0) or 0
+                    last_scraped = row.get("last_scraped")
 
-            scraped = report.items_collected or 0
-            status = report.status or "unknown"
-            is_active = status == "running"
+                last_upd = _iso(last_scraped)
+                # If we found actual data in the DB, mark as completed
+                status = "completed" if scraped > 0 else "never_run"
 
-            # A completed run with 0 items still counts as 100 % done
+            # Clamp progress
             if status == "completed" and scraped == 0:
                 pct, remaining = 100, 0
             else:
                 pct, remaining = _compute_progress(scraped, expected)
 
-            # If still running, do not show 100 % yet
-            if is_active and pct == 100:
+            # Never show 100 % while still running
+            if is_active and pct >= 100:
                 pct = 99
+                status = "running"
 
             items.append(
                 ScraperStatusItem(
@@ -203,7 +261,7 @@ async def get_scraper_status(
                     items_scraped=scraped,
                     items_remaining=remaining,
                     status=status,
-                    last_updated=_iso(report.run_at),
+                    last_updated=last_upd,
                     next_run=next_run_map.get(scraper_id),
                 )
             )
@@ -211,4 +269,7 @@ async def get_scraper_status(
         return ScraperStatusResponse(scrapers=items)
 
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch scraper status: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch scraper status: {exc}",
+        ) from exc

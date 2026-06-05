@@ -126,62 +126,69 @@ async def _backfill_embeddings_job():
 
 
 def start_scheduler() -> None:
-    """Start the APScheduler with all configured jobs."""
+    """Start the APScheduler with all configured jobs.
+
+    Render free-tier note
+    ---------------------
+    The instance is kept alive by a 14-minute keep-alive ping, but every cold
+    start resets the scheduler.  Using a pure CronTrigger(hour="*/2") would
+    mean scrapers only fire at exact hour boundaries — potentially waiting up
+    to 2 hours after a restart with no data collected.
+
+    Fix: use IntervalTrigger(hours=2) so each scraper fires 2 hours after the
+    *last run*, not at a fixed wall-clock hour.  We also schedule a one-shot
+    startup run (30-second delay) so fresh data is collected immediately after
+    every cold start, without hammering the HN API on the same second as boot.
+    """
+    from datetime import datetime, timedelta, timezone
+    from apscheduler.triggers.interval import IntervalTrigger
+
     print("\n>>> [SCHEDULER] Registering scraper jobs...")
-    
-    # Who Is Hiring: every 2 hours
-    scheduler.add_job(
-        _who_is_hiring_job,
-        trigger=CronTrigger(hour="*/2"),
-        id="who_is_hiring",
-        name="Who Is Hiring Scraper",
-        replace_existing=True,
-    )
-    print("    + [JOB-1] Who Is Hiring -> runs every 2 hours (Algolia)")
-    
-    # Trend computation + observation generation: every 24 hours (weekly keyword frequency analysis + LLM observation)
+
+    now_utc = datetime.now(timezone.utc)
+
+    # ------------------------------------------------------------------ #
+    # Stagger the one-shot startup runs so they don't all hit HN at once. #
+    # Who Is Hiring is heaviest — give it a 60 s head-start window.       #
+    # ------------------------------------------------------------------ #
+    startup_offsets = {
+        "who_is_hiring": 30,
+        "top_stories":   90,
+        "ask_hn":        150,
+        "show_hn":       210,
+    }
+
+    scraper_jobs = [
+        ("who_is_hiring", "Who Is Hiring Scraper",  _who_is_hiring_job),
+        ("top_stories",   "Top Stories Scraper",    _top_stories_job),
+        ("ask_hn",        "Ask HN Scraper",          _ask_hn_job),
+        ("show_hn",       "Show HN Scraper",         _show_hn_job),
+    ]
+
+    for job_id, job_name, job_func in scraper_jobs:
+        offset_s = startup_offsets[job_id]
+
+        # Recurring: every 2 hours from first run
+        scheduler.add_job(
+            job_func,
+            trigger=IntervalTrigger(hours=2, start_date=now_utc + timedelta(seconds=offset_s)),
+            id=job_id,
+            name=job_name,
+            replace_existing=True,
+        )
+        print(f"    + [{job_id}] {job_name} -> first run in {offset_s}s, then every 2h")
+
+    # Trend computation + observation: daily at midnight UTC (kept as cron — once a day is fine)
     scheduler.add_job(
         _compute_trends_with_observation,
-        trigger=CronTrigger(hour="0"),  # Run at midnight UTC
+        trigger=CronTrigger(hour="0"),
         id="compute_trends",
         name="Trends + Market Observation",
         replace_existing=True,
     )
-    print("    + [JOB-2] Trends + Observation -> runs daily at midnight UTC")
-    
-    # Top Stories: every 2 hours
-    scheduler.add_job(
-        _top_stories_job,
-        trigger=CronTrigger(hour="*/2"),
-        id="top_stories",
-        name="Top Stories Scraper",
-        replace_existing=True,
-    )
-    print("    + [JOB-3] Top Stories -> runs every 2 hours (Firebase)")
-    
-    # Ask HN: every 2 hours
-    scheduler.add_job(
-        _ask_hn_job,
-        trigger=CronTrigger(hour="*/2"),
-        id="ask_hn",
-        name="Ask HN Scraper",
-        replace_existing=True,
-    )
-    print("    + [JOB-4] Ask HN -> runs every 2 hours (Firebase)")
-    
-    # Show HN: every 2 hours
-    scheduler.add_job(
-        _show_hn_job,
-        trigger=CronTrigger(hour="*/2"),
-        id="show_hn",
-        name="Show HN Scraper",
-        replace_existing=True,
-    )
-    print("    + [JOB-5] Show HN -> runs every 2 hours (Firebase)")
+    print("    + [compute_trends] Trends + Observation -> daily at midnight UTC")
 
     if settings.EMBEDDINGS_ENABLED:
-        # Daily embeddings backfill: run once per day at 03:00 UTC
-        # BUG FIX [M9]: schedule idempotent embedding backfill to ensure coverage
         scheduler.add_job(
             _backfill_embeddings_job,
             trigger=CronTrigger(hour="3"),
@@ -189,17 +196,16 @@ def start_scheduler() -> None:
             name="Embeddings Backfill",
             replace_existing=True,
         )
-        print("    + [JOB-6] Embeddings Backfill -> runs daily at 03:00 UTC")
+        print("    + [embeddings_backfill] Embeddings Backfill -> daily at 03:00 UTC")
     else:
         print("    - [SKIP] Embeddings Backfill disabled (EMBEDDINGS_ENABLED=false)")
-    
+
     scheduler.start()
     job_count = len(scheduler.get_jobs())
     print(f">>> [SCHEDULER] Started with {job_count} jobs registered")
     print(f">>> [SCHEDULER] Next run times:")
     for job in scheduler.get_jobs():
-        next_run = job.next_run_time
-        print(f"    - {job.id}: {next_run}")
+        print(f"    - {job.id}: {job.next_run_time}")
 
 
 async def run_all_scrapers_now() -> dict[str, str]:

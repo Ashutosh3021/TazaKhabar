@@ -172,22 +172,22 @@ class SupabaseClient:
         if self.is_storage_configured:
             result['storage']['configured'] = True
             try:
-                # Test connectivity by making a HEAD request to the storage bucket
-                url = f"{self.url}/storage/v1/buckets/{self.storage_bucket}"
+                # Test connectivity with GET /storage/v1/bucket/{name} (singular, GET only)
+                url = f"{self.url}/storage/v1/bucket/{self.storage_bucket}"
                 headers = {
                     "Authorization": f"Bearer {self.service_role_key}",
                     "apikey": self.service_role_key,
                 }
-                
+
                 async with httpx.AsyncClient(timeout=10) as client:
-                    response = await client.head(url, headers=headers)
-                
-                if response.status_code in (200, 204, 401, 403):
-                    # 401/403 means auth issue but server is reachable
-                    # 200/204 means success
-                    result['storage']['connected'] = response.status_code in (200, 204)
-                    if response.status_code in (401, 403):
-                        result['storage']['error'] = f"Authentication failed (HTTP {response.status_code}). Check SUPABASE_SERVICE_ROLE_KEY."
+                    response = await client.get(url, headers=headers)
+
+                if response.status_code in (200, 204):
+                    result['storage']['connected'] = True
+                elif response.status_code in (401, 403):
+                    result['storage']['error'] = f"Authentication failed (HTTP {response.status_code}). Check SUPABASE_SERVICE_ROLE_KEY."
+                elif response.status_code == 404:
+                    result['storage']['error'] = f"Bucket '{self.storage_bucket}' not found. Create it in the Supabase dashboard."
                 else:
                     result['storage']['error'] = f"Unexpected status code: {response.status_code}"
             except httpx.ConnectError as e:

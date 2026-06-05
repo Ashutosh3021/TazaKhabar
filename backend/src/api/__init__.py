@@ -15,6 +15,7 @@ from src.api.qa import router as qa_router
 from src.api.embeddings import router as embeddings_router
 from src.api.scrape import router as scrape_router
 from src.api.notebooks import router as notebooks_router
+from src.api.health import router as health_router
 
 __all__ = [
     "jobs_router",
@@ -31,4 +32,5 @@ __all__ = [
     "embeddings_router",
     "scrape_router",
     "notebooks_router",
+    "health_router",
 ]

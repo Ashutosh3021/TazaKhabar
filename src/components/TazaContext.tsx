@@ -5,6 +5,7 @@ import type { ActiveFilters, UserProfile } from "@/types";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { jobs as mockJobs } from "@/lib/mockData"; // DEPRECATED — used only for default saved jobs fallback
 import { fetchJobs, fetchNews } from "@/lib/api";
+import { useHealthCheck } from "@/lib/useHealthCheck";
 
 type TazaContextValue = {
   userProfile: UserProfile;
@@ -58,6 +59,9 @@ const DEFAULT_SCRAPE = {
 const TazaContext = createContext<TazaContextValue | null>(null);
 
 export function TazaProvider({ children }: { children: React.ReactNode }) {
+  // Check Supabase health on mount
+  useHealthCheck('supabase', 500);
+
   const userStorage = useLocalStorage<UserProfile>(
     "tazakhabar:userProfile",
     DEFAULT_PROFILE,

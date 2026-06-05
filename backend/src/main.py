@@ -10,7 +10,7 @@ import httpx
 
 from src.config import settings
 from src.api import jobs_router, news_router, trends_router, badge_router, refresh_router, observation_router, resume_router, profile_router, digest_router, csv_loader_router, qa_router
-from src.api import embeddings_router, scrape_router, notebooks_router
+from src.api import embeddings_router, scrape_router, notebooks_router, health_router
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Ensure log directory exists before FileHandler is created (Render filesystem starts empty)
@@ -224,6 +224,8 @@ app.include_router(scrape_router)
 print("    + /api/scrape registered")
 app.include_router(notebooks_router)
 print("    + /api/notebooks registered")
+app.include_router(health_router)
+print("    + /health registered")
 
 # Add CORS middleware — must be registered BEFORE other middleware so it wraps all requests.
 # Starlette applies middleware in reverse registration order (last added = outermost),

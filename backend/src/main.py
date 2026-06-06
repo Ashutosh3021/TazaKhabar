@@ -52,7 +52,7 @@ async def _keepalive_loop(stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
             try:
                 r = await client.get(url, headers={"User-Agent": "tazakhabar-keepalive/1.0"})
-                logger.info("Keep-alive ping: %s -> %s", url, r.status_code)
+                logger.debug("Keep-alive ping: %s -> %s", url, r.status_code)
             except Exception as e:
                 logger.warning("Keep-alive ping failed (%s): %s", url, e)
 

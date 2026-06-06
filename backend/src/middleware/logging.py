@@ -43,6 +43,9 @@ def setup_logging(log_level: str | None = None) -> logging.Logger:
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log HTTP requests with method, path, status, and duration."""
 
+    # Paths to log at DEBUG level instead of INFO (to suppress noise in production)
+    _SILENT_PATHS: frozenset[str] = frozenset({"/health", "/", "/favicon.ico"})
+
     async def dispatch(self, request: Request, call_next) -> Response:
         start_time = time.perf_counter()
         
@@ -50,10 +53,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger = logging.getLogger("tazakhabar")
-        
-        logger.info(
-            f"{request.method} {request.url.path} "
+
+        path = request.url.path
+        msg = (
+            f"{request.method} {path} "
             f"status={response.status_code} duration_ms={duration_ms:.2f}"
         )
+
+        if path in self._SILENT_PATHS:
+            # Health-check and root pings: only visible at DEBUG level
+            logger.debug(msg)
+        else:
+            logger.info(msg)
         
         return response

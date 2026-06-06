@@ -69,7 +69,9 @@ export default function JobsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setApiError(err instanceof Error ? err.message : "Failed to load jobs");
+          const msg = err instanceof Error ? err.message : "Failed to load jobs";
+          setApiError(msg);
+          console.error("[JobsPage] fetchJobs error:", msg);
           setJobs([]);
         }
       }
@@ -656,7 +658,23 @@ export default function JobsPage() {
               </div>
             </div>
 
-            {isFetchingRadar || jobs.length === 0 ? (
+            {apiError ? (
+              <div className="brutalist-border bg-card-dark p-6 text-center col-span-2">
+                <p className="mono-label text-[11px] text-primary uppercase tracking-[0.1em] mb-2">API ERROR</p>
+                <p className="mono-label text-[10px] text-dim-text">{apiError}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setApiError(null);
+                    setJobs([]);
+                    setSkip(0);
+                  }}
+                  className="mt-4 brutalist-border-primary px-4 py-2 mono-label text-[10px] uppercase tracking-[0.05em] text-primary hover:bg-primary/10"
+                >
+                  RETRY
+                </button>
+              </div>
+            ) : isFetchingRadar ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[0, 1, 2].map((i) => (
                   <JobCardSkeleton key={i} />

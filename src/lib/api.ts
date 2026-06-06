@@ -74,7 +74,7 @@ export async function fetchJobs(filters?: {
 
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
-    next: { revalidate: 300 },
+    cache: "no-store",  // Jobs change frequently; never serve stale cached empty responses
   });
 
   if (!res.ok) {

@@ -6,6 +6,7 @@ import logging
 import re
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from html import unescape
 
@@ -27,49 +28,74 @@ class WhoIsHiringScraper(BaseScraper):
     
     def __init__(self):
         self.client = HNClient()
-        self._last_thread_id_file = ".last_wih_thread"
+        # Use an absolute path anchored to this file so it works regardless of CWD
+        self._last_thread_id_file = Path(__file__).resolve().parent.parent.parent / ".last_wih_thread"
     
     def _get_last_thread_id(self) -> int | None:
         """Get the last processed Who Is Hiring thread ID."""
         try:
-            with open(self._last_thread_id_file, "r") as f:
-                return int(f.read().strip())
+            return int(self._last_thread_id_file.read_text(encoding="utf-8").strip())
         except (FileNotFoundError, ValueError, IOError):
             return None
     
     def _set_last_thread_id(self, thread_id: int) -> None:
         """Store the last processed Who Is Hiring thread ID."""
         try:
-            with open(self._last_thread_id_file, "w") as f:
-                f.write(str(thread_id))
+            self._last_thread_id_file.write_text(str(thread_id), encoding="utf-8")
         except IOError as e:
             logger.warning(f"Failed to save last thread ID: {e}")
     
     async def discover_thread(self) -> dict[str, Any] | None:
         """
         Discover the latest Who Is Hiring thread via Algolia.
-        
-        Returns:
-            Thread data dict with objectID, title, and author, or None if not found.
-        """
-        # Search for Who Is Hiring threads by whoishiring
-        results = await self.client.search_algolia(
-            query="who is hiring",
-            tags="story"
-        )
-        
-        # Filter for threads by whoishiring
-        for hit in results:
-            author = hit.get("author", "")
-            if "whoishiring" in author.lower():
-                logger.info(f"Found Who Is Hiring thread: {hit.get('title', '')[:80]}")
-                return hit
 
-        # If no matching hit was found, return None
+        Searches by the known author "whoishiring" with multiple queries so we
+        are not reliant on a generic "who is hiring" keyword appearing in the
+        top-50 Algolia hits.
+
+        Returns:
+            Thread data dict with objectID/id, title, and author, or None if not found.
+        """
+        queries = [
+            ("Ask HN: Who is hiring?", "story"),
+            ("who is hiring", "story,author_whoishiring"),
+        ]
+
+        for query, tags in queries:
+            try:
+                results = await self.client.search_algolia(query=query, tags=tags)
+                for hit in results:
+                    author = hit.get("author", "")
+                    title = hit.get("title", "")
+                    if "whoishiring" in author.lower() and "hiring" in title.lower():
+                        logger.info(f"Found Who Is Hiring thread: {title[:80]}")
+                        return hit
+            except Exception as e:
+                logger.warning(f"Algolia query '{query}' failed: {e}")
+                continue
+
+        # Hard fallback: use HN Firebase jobstories endpoint which lists the
+        # Who Is Hiring thread IDs directly.
+        try:
+            logger.info("Algolia miss — falling back to HN jobstories endpoint")
+            job_ids = await self.client.fetch_story_ids("jobstories")
+            if job_ids:
+                # The first ID in jobstories is typically the current month's thread
+                story = await self.client.fetch_item(job_ids[0])
+                if story and "whoishiring" in (story.get("by") or "").lower():
+                    logger.info(f"Found thread via jobstories fallback: {story.get('title', '')[:80]}")
+                    return {
+                        "id": story["id"],
+                        "objectID": str(story["id"]),
+                        "title": story.get("title", ""),
+                        "author": story.get("by", ""),
+                    }
+        except Exception as e:
+            logger.warning(f"jobstories fallback failed: {e}")
+
         logger.warning("No Who Is Hiring thread found in search results")
         print(">>> [WIH-SCRAPER] WARNING: No Who Is Hiring thread found!")
         return None
-    # BUG FIX [C1]: ensure discover_thread returns only on match and None otherwise
 
     def parse_comment(self, comment: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -262,6 +288,12 @@ class WhoIsHiringScraper(BaseScraper):
             if not thread:
                 print(">>> [WIH-SCRAPER] ERROR: No thread discovered. Check Algolia API key and internet connection.")
                 logger.warning("No Who Is Hiring thread found")
+                async with async_session() as session:
+                    from sqlalchemy import select as _select
+                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
+                    if r:
+                        r.status = "failed"
+                        await session.commit()
                 return {"collected": 0, "new": 0}
 
             thread_id = thread.get("id") or thread.get("objectID")
@@ -271,6 +303,12 @@ class WhoIsHiringScraper(BaseScraper):
             if not thread_id:
                 print(f">>> [WIH-SCRAPER] ERROR: Thread has no ID field!")
                 logger.error("Thread has no ID")
+                async with async_session() as session:
+                    from sqlalchemy import select as _select
+                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
+                    if r:
+                        r.status = "failed"
+                        await session.commit()
                 return {"collected": 0, "new": 0}
 
             # Check if this is a new thread
@@ -278,6 +316,13 @@ class WhoIsHiringScraper(BaseScraper):
             if last_thread_id == int(thread_id):
                 print(f">>> [WIH-SCRAPER] Thread {thread_id} already processed (last run), skipping.")
                 logger.info(f"Thread {thread_id} already processed, skipping")
+                async with async_session() as session:
+                    from sqlalchemy import select as _select
+                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
+                    if r:
+                        r.status = "completed"
+                        r.items_collected = 0
+                        await session.commit()
                 return {"collected": 0, "new": 0}
             else:
                 print(f">>> [WIH-SCRAPER] New thread detected! Last: {last_thread_id}, Current: {thread_id}")

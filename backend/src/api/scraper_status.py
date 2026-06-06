@@ -327,6 +327,10 @@ async def get_scraper_status(
                     scraped = report.items_collected or 0
                     status = report.status or "unknown"
                     last_upd = _iso(report.run_at)
+                    # When completed, treat the actual items fetched as the ceiling
+                    # so progress shows 100% instead of a misleading partial %.
+                    if status == "completed" and scraped > 0:
+                        expected = scraped
                 else:
                     # Fallback: query actual table data
                     if news_type is None:

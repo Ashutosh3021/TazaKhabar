@@ -60,9 +60,11 @@ export default function DigestPage() {
   }, [feedVersion, digestItems]);
 
   const list = useMemo(() => {
-    const nonFeatured = rotatedDigest.filter((d) => d.id !== featured.id);
+    const nonFeatured = featured
+      ? rotatedDigest.filter((d) => d.id !== featured.id)
+      : rotatedDigest;
     return tab === "ALL" ? nonFeatured : nonFeatured.filter((d) => d.category === tab);
-  }, [featured.id, tab, rotatedDigest]);
+  }, [featured, tab, rotatedDigest]);
 
   const isBookmarked = (id: string) => savedJobs.includes(id);
 

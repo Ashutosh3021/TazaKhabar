@@ -23,7 +23,8 @@ FALLBACK_TEXT = "Market analysis loading..."
 async def get_observation() -> ObservationResponse:
     """
     Get the most recent market observation.
-    Returns fallback text if no observation has been generated yet.
+    Returns fallback=True with empty text if no observation has been generated yet,
+    so the frontend can suppress the block rather than show a placeholder.
     """
     try:
         async with async_session() as session:
@@ -38,7 +39,7 @@ async def get_observation() -> ObservationResponse:
         if observation is None:
             print(f">>> [API:GET /api/observation] No observation found, returning fallback")
             return ObservationResponse(
-                text=FALLBACK_TEXT,
+                text="",
                 generated_at=None,
                 fallback=True,
             )
@@ -62,7 +63,7 @@ async def get_observation() -> ObservationResponse:
         print(f">>> [API:GET /api/observation] TRACE: {traceback.format_exc()}")
         logger.error(f"Error fetching observation: {e}")
         return ObservationResponse(
-            text=FALLBACK_TEXT,
+            text="",
             generated_at=None,
             fallback=True,
         )

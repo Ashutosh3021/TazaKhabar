@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { digestItems as mockDigestItems } from "@/lib/mockData"; // DEPRECATED fallback
 import { useTaza } from "@/components/TazaContext";
 import { fetchDigest } from "@/lib/api";
 import type { DigestItem } from "@/types";
@@ -46,18 +45,18 @@ export default function DigestPage() {
 
   const featured = useMemo(
     () => {
-      const shift = feedVersion % (digestItems.length || mockDigestItems.length);
-      const source = digestItems.length > 0 ? digestItems : mockDigestItems;
-      const rotated = [...source.slice(shift), ...source.slice(0, shift)];
+      if (digestItems.length === 0) return null;
+      const shift = feedVersion % digestItems.length;
+      const rotated = [...digestItems.slice(shift), ...digestItems.slice(0, shift)];
       return rotated.find((d) => d.featured) ?? rotated[0];
     },
     [feedVersion, digestItems],
   );
 
   const rotatedDigest = useMemo(() => {
-    const shift = feedVersion % (digestItems.length || mockDigestItems.length);
-    const source = digestItems.length > 0 ? digestItems : mockDigestItems;
-    return [...source.slice(shift), ...source.slice(0, shift)];
+    if (digestItems.length === 0) return [];
+    const shift = feedVersion % digestItems.length;
+    return [...digestItems.slice(shift), ...digestItems.slice(0, shift)];
   }, [feedVersion, digestItems]);
 
   const list = useMemo(() => {
@@ -164,6 +163,21 @@ export default function DigestPage() {
               {[0, 1].map((i) => (
                 <FeedNewsSkeleton key={i} />
               ))}
+            </div>
+          ) : apiError ? (
+            <div className="brutalist-border bg-card-dark p-6 text-center">
+              <p className="mono-label text-[11px] text-primary uppercase tracking-[0.1em] mb-2">API ERROR</p>
+              <p className="mono-label text-[10px] text-dim-text">{apiError}</p>
+            </div>
+          ) : list.length === 0 && digestItems.length === 0 ? (
+            <div className="brutalist-border bg-card-dark p-8 text-center">
+              <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.2em] mb-2">
+                NO DIGEST ITEMS YET
+              </p>
+              <p className="mono-label text-[10px] text-dim-text">
+                The digest populates after the HN scrapers run and news items get AI summaries.
+                Check back after the next scrape cycle.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

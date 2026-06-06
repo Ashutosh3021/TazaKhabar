@@ -37,6 +37,7 @@ class JobResponse(BaseModel):
     applyAvailable: bool = True
     applyLink: str | None = None  # Direct apply link from CSV
     description: str | None = None  # Job description from CSV
+    is_ghost_job: bool = False  # Ghost job heuristic flag — required by frontend Job type
 
 
 class NewsResponse(BaseModel):

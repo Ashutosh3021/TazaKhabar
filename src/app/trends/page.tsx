@@ -67,7 +67,7 @@ export default function TrendsPage() {
             <div className="h-3 bg-[#2a2a2a] rounded-none w-full mb-2" />
             <div className="h-3 bg-[#2a2a2a] rounded-none w-3/4" />
           </div>
-        ) : observation ? (
+        ) : observation && !observation.fallback && observation.text ? (
           <section className="brutalist-border-primary bg-card-dark p-8 border border-primary/40">
             <div className="flex items-center gap-3 mb-4">
               <span className="tazakhabar-live-dot" />
@@ -79,12 +79,15 @@ export default function TrendsPage() {
                   — {new Date(observation.generated_at).toLocaleDateString()}
                 </span>
               )}
-              {observation.fallback && (
-                <span className="mono-label text-[10px] text-dim-text italic">(Cached)</span>
-              )}
             </div>
             <p className="font-serif text-xl md:text-2xl font-black leading-relaxed text-neutral-beige">
               {observation.text}
+            </p>
+          </section>
+        ) : !loading ? (
+          <section className="brutalist-border bg-card-dark p-6">
+            <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.2em]">
+              MARKET INTELLIGENCE — First analysis generates after the scheduler runs at midnight UTC.
             </p>
           </section>
         ) : null}

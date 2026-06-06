@@ -103,6 +103,7 @@ def _row_to_response(row: Job) -> JobResponse:
         applyAvailable=bool(row.apply_link and row.apply_link not in ["", "detected"]),
         applyLink=row.apply_link,  # Direct apply link from CSV
         description=row.description,  # Include job description from CSV
+        is_ghost_job=bool(row.is_ghost_job),
     )
 
 
@@ -290,7 +291,7 @@ async def get_jobs(
         # Return as dict to allow adding 'personalized' flag into meta
         return {
             "data": jobs_data,
-            "meta": {**meta_obj.__dict__, "personalized": bool(personalized)},
+            "meta": {**meta_obj.model_dump(), "personalized": bool(personalized)},
         }
 
     except Exception as e:

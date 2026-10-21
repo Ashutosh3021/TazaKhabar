@@ -92,7 +92,20 @@ async def _authenticate(
             except PyroAuthError as exc:
                 if exc.status_code != 409:
                     raise
-                payload, cookie_header = await auth.login(email, password)
+                # The account exists. Fall back to signing in with the same
+                # password, and say clearly what went wrong if that fails.
+                try:
+                    payload, cookie_header = await auth.login(email, password)
+                except PyroAuthError as login_exc:
+                    if login_exc.status_code == 401:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                "This address already has an account. Sign in with its "
+                                "passcode, or use 'Forgot passcode' to set a new one."
+                            ),
+                        ) from login_exc
+                    raise
         else:
             payload, cookie_header = await auth.login(email, password)
     except PyroAuthError as exc:

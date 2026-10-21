@@ -17,7 +17,7 @@ const plexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://tazakhabar.vercel.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://tazakhabar3021.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

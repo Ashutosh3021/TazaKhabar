@@ -35,7 +35,7 @@ services:
       - key: API_PUBLIC_URL
         value: https://tazakhabar-backend.onrender.com
       - key: FRONTEND_URL
-        value: https://tazakhabar.vercel.app
+        value: https://tazakhabar3021.vercel.app
       # OAuth clients for Google and GitHub (no passwords anywhere).
       - key: GOOGLE_CLIENT_ID
         sync: false

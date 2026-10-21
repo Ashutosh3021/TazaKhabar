@@ -338,6 +338,21 @@ A (auth+provisioning) ──▶ B (data layer) ──▶ C (CI scraping) ──�
    (`15 0 * * *` UTC) and the embedding backfill is daily (`30 3 * * *` UTC). The first
    cut ran the trends and the observation inside every scrape cycle, which meant twelve
    LLM calls and twelve full-week scans a day for no extra insight.
+9. **Auth moved to Google and GitHub, and the app owns the session.** The Pyronites
+   OAuth endpoints hard-code their own callback URL
+   (`pyrocore-backend.onrender.com/auth/oauth/...`) and hand the session to that host
+   with a host-only cookie, which this API (a different host) cannot read. The API is
+   therefore the OAuth client: it redirects to the provider, exchanges the code
+   (PKCE for Google), links the identity to an `accounts` row and issues a signed
+   session cookie of its own. No password endpoint exists any more.
+10. **The session cookie is host-only on the API domain.** The Next.js route gate on
+   the frontend domain can never see `tk_session`, so it reads a first-party hint
+   cookie (`tk_hint`) that the client sets after a sign in. The hint only decides which
+   page to show; the API verifies the signature on every request.
+11. **The live frontend origin is `https://tazakhabar3021.vercel.app`.**
+   `tazakhabar.vercel.app` redirects to a Blogspot site that is not the app, and the
+   backend's CORS whitelist only contains the `tazakhabar3021` origin. `FRONTEND_URL`
+   and `ALLOWED_ORIGINS` must both point at the origin the browser actually uses.
 
 ---
 

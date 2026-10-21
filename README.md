@@ -165,7 +165,7 @@ Then the environment variables:
 | `FRONTEND_URL` | the frontend URL, where the browser lands after sign in | yes |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google web app credentials | yes |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth app credentials | yes |
-| `ALLOWED_ORIGINS` | the exact frontend origin, e.g. `https://tazakhabar.vercel.app` | yes |
+| `ALLOWED_ORIGINS` | the exact frontend origin, e.g. `https://tazakhabar3021.vercel.app` | yes |
 | `ADMIN_TOKEN` | a random string, guards the write endpoints | yes |
 | `GROQ_API_KEY` | your Groq key, for resume scoring and the career bot | recommended |
 | `OPENROUTER_API_KEY` | your OpenRouter key, used when Groq fails | recommended |

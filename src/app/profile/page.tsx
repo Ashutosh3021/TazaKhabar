@@ -260,9 +260,7 @@ export default function ProfilePage() {
             </p>
             <Link href="/auth" className="btn btn--primary mt-4">
               Go to the access terminal
-              <span className="material-symbols-outlined text-[18px]" aria-hidden>
-                arrow_forward
-              </span>
+              <Icon name="arrow_forward" className="text-[18px]" />
             </Link>
           </div>
         )}

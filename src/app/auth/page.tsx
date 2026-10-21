@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Icon } from "@/components/Icon";
 import { fetchAuthProviders, startOAuth, type AuthProvider } from "@/lib/api";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -41,9 +42,7 @@ export default function AuthPage() {
 
       <div className="relative z-10 flex items-center justify-between border-b border-border-dark px-5 py-3 md:px-12">
         <Link href="/" className="tab border-transparent">
-          <span className="material-symbols-outlined text-[18px]" aria-hidden>
-            arrow_back
-          </span>
+          <Icon name="arrow_back" className="text-[18px]" />
           Back
         </Link>
         <span className="mono-label text-dim-text">Access terminal</span>
@@ -91,9 +90,7 @@ export default function AuthPage() {
                 {busy === provider.id
                   ? "Redirecting..."
                   : `Continue with ${provider.name}`}
-                <span className="material-symbols-outlined text-[18px]" aria-hidden>
-                  arrow_forward
-                </span>
+                <Icon name="arrow_forward" className="text-[18px]" />
               </button>
             ))}
           </div>

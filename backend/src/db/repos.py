@@ -612,25 +612,43 @@ async def upsert_trend(
     percentage_change: float,
     direction: str,
 ) -> None:
-    row_id = f"{keyword}|{week_start}"
-    row = {
-        "id": row_id,
-        "keyword": keyword,
-        "count": int(count),
-        "week_start": week_start,
-        "week_end": week_end,
-        "percentage_change": float(percentage_change),
-        "direction": direction,
-    }
-    columns = ", ".join(sql_ident(c) for c in row)
-    values = ", ".join(sql_literal(row[c]) for c in row)
-    assignments = ", ".join(
-        f"{sql_ident(c)} = excluded.{sql_ident(c)}" for c in row if c != "id"
+    await upsert_trends(
+        [
+            {
+                "id": f"{keyword}|{week_start}",
+                "keyword": keyword,
+                "count": int(count),
+                "week_start": week_start,
+                "week_end": week_end,
+                "percentage_change": float(percentage_change),
+                "direction": direction,
+            }
+        ]
     )
-    await get_pyro().exec(
-        f"INSERT INTO \"trends\" ({columns}) VALUES ({values}) "
-        f"ON CONFLICT(id) DO UPDATE SET {assignments}"
-    )
+
+
+async def upsert_trends(rows: List[Dict[str, Any]], chunk: int = 100) -> int:
+    """Upsert many trend rows with a handful of statements, not one per row."""
+    if not rows:
+        return 0
+
+    columns = list(rows[0].keys())
+    written = 0
+    for start in range(0, len(rows), chunk):
+        batch = rows[start : start + chunk]
+        col_sql = ", ".join(sql_ident(c) for c in columns)
+        values = ", ".join(
+            "(" + ", ".join(sql_literal(row.get(c)) for c in columns) + ")" for row in batch
+        )
+        assignments = ", ".join(
+            f"{sql_ident(c)} = excluded.{sql_ident(c)}" for c in columns if c != "id"
+        )
+        await get_pyro().exec(
+            f"INSERT INTO \"trends\" ({col_sql}) VALUES {values} "
+            f"ON CONFLICT(id) DO UPDATE SET {assignments}"
+        )
+        written += len(batch)
+    return written
 
 
 async def distinct_trend_keywords() -> List[str]:
@@ -753,22 +771,41 @@ async def get_embeddings(
 
 async def upsert_embedding(item_id: str, item_type: str, blob: bytes) -> None:
     payload = base64.b64encode(blob).decode("ascii")
-    row = {
-        "id": f"{item_type}:{item_id}",
-        "item_id": item_id,
-        "item_type": item_type,
-        "embedding": payload,
-        "created_at": now_iso(),
-    }
-    columns = ", ".join(sql_ident(c) for c in row)
-    values = ", ".join(sql_literal(row[c]) for c in row)
-    assignments = ", ".join(
-        f"{sql_ident(c)} = excluded.{sql_ident(c)}" for c in row if c != "id"
+    await upsert_embeddings(
+        [
+            {
+                "id": f"{item_type}:{item_id}",
+                "item_id": item_id,
+                "item_type": item_type,
+                "embedding": payload,
+                "created_at": now_iso(),
+            }
+        ]
     )
-    await get_pyro().exec(
-        f"INSERT INTO \"embeddings\" ({columns}) VALUES ({values}) "
-        f"ON CONFLICT(id) DO UPDATE SET {assignments}"
-    )
+
+
+async def upsert_embeddings(rows: List[Dict[str, Any]], chunk: int = 50) -> int:
+    """Upsert many embedding rows with a handful of statements."""
+    if not rows:
+        return 0
+
+    columns = list(rows[0].keys())
+    written = 0
+    for start in range(0, len(rows), chunk):
+        batch = rows[start : start + chunk]
+        col_sql = ", ".join(sql_ident(c) for c in columns)
+        values = ", ".join(
+            "(" + ", ".join(sql_literal(row.get(c)) for c in columns) + ")" for row in batch
+        )
+        assignments = ", ".join(
+            f"{sql_ident(c)} = excluded.{sql_ident(c)}" for c in columns if c != "id"
+        )
+        await get_pyro().exec(
+            f"INSERT INTO \"embeddings\" ({col_sql}) VALUES {values} "
+            f"ON CONFLICT(id) DO UPDATE SET {assignments}"
+        )
+        written += len(batch)
+    return written
 
 
 # ---------------------------------------------------------------------------

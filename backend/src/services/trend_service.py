@@ -9,9 +9,6 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-from sklearn.linear_model import LinearRegression
-
 from src.db import repos
 
 logger = logging.getLogger(__name__)
@@ -159,6 +156,7 @@ async def compute_keyword_frequencies() -> List[Dict[str, Any]]:
     }
 
     results: List[Dict[str, Any]] = []
+    trend_rows: List[Dict[str, Any]] = []
     for keyword, count in keyword_counts.items():
         prev_count = prev_trends.get(keyword, 0)
         if prev_count > 0:
@@ -173,13 +171,16 @@ async def compute_keyword_frequencies() -> List[Dict[str, Any]]:
         else:
             direction = "neutral"
 
-        await repos.upsert_trend(
-            keyword=keyword,
-            count=count,
-            week_start=week_start.isoformat(),
-            week_end=week_end.isoformat(),
-            percentage_change=percentage_change,
-            direction=direction,
+        trend_rows.append(
+            {
+                "id": f"{keyword}|{week_start.isoformat()}",
+                "keyword": keyword,
+                "count": int(count),
+                "week_start": week_start.isoformat(),
+                "week_end": week_end.isoformat(),
+                "percentage_change": float(percentage_change),
+                "direction": direction,
+            }
         )
 
         results.append(
@@ -191,6 +192,8 @@ async def compute_keyword_frequencies() -> List[Dict[str, Any]]:
                 "week_end": week_end,
             }
         )
+
+    await repos.upsert_trends(trend_rows)
 
     logger.info("Computed keyword frequencies for %s keywords", len(results))
     return results
@@ -334,15 +337,26 @@ class TrendService:
             confidence = 0.0
 
             if len(counts) >= 8:
-                X = np.array(weeks).reshape(-1, 1)
-                y = np.array(counts)
+                # Fit a linear regression on week index -> count. scikit-learn is
+                # only needed for the predictions, never for counting, so it is
+                # imported here: the counting job runs without it installed.
                 try:
+                    import numpy as np
+                    from sklearn.linear_model import LinearRegression
+
+                    X = np.array(weeks).reshape(-1, 1)
+                    y = np.array(counts)
                     model = LinearRegression()
                     model.fit(X, y)
                     last_week = weeks[-1]
                     pred_w2 = int(round(model.predict(np.array([[last_week + 2]]))[0]))
                     pred_w4 = int(round(model.predict(np.array([[last_week + 4]]))[0]))
                     confidence = float(model.score(X, y))
+                except ImportError:
+                    logger.warning("scikit-learn is not installed, skipping the predictions")
+                    pred_w2 = None
+                    pred_w4 = None
+                    confidence = 0.0
                 except Exception:
                     pred_w2 = None
                     pred_w4 = None

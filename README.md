@@ -130,20 +130,52 @@ cookie travels with every request. In production the cookie is
 
 ### Render (API)
 
-`render.yaml` declares the service. Set the `sync: false` variables once in the
-Render dashboard:
+`render.yaml` declares the service, so the quickest path is **New → Blueprint**
+in the Render dashboard, point it at the repository and apply. Render then
+creates the service with the right root directory, build and start commands.
 
-| Variable | Purpose |
+To create it by hand instead: **New → Web Service**, connect the repository, then
+set:
+
+| Setting | Value |
 |---|---|
-| `PYRONITES_URL` | Pyronites base URL |
-| `PYRONITES_KEY` | project-scoped key with `read` + `write` |
-| `PYRONITES_PROJECT_ID` | `tazakhabar` |
-| `AUTH_SESSION_SECRET` | signs the session cookie |
-| `ALLOWED_ORIGINS` | exact frontend origin, no wildcards |
-| `ADMIN_TOKEN` | guards the write endpoints |
-| `GROQ_API_KEY`, `OPENROUTER_API_KEY` | LLM calls from the API |
+| Root directory | `backend` |
+| Runtime | Python 3.11.9 (from `backend/runtime.txt`) |
+| Build command | `pip install -r requirements.render.txt` |
+| Start command | `uvicorn src.main:app --host 0.0.0.0 --port $PORT` |
+| Health check path | `/health` |
+| Instance type | Free |
+
+Then the environment variables:
+
+| Variable | Value | Required |
+|---|---|---|
+| `PYRONITES_URL` | `https://pyrocore-backend.onrender.com` | yes |
+| `PYRONITES_KEY` | the project key with `read` + `write` scope | yes |
+| `PYRONITES_PROJECT_ID` | `tazakhabar` | yes |
+| `AUTH_SESSION_SECRET` | any long random string | yes |
+| `AUTH_COOKIE_SECURE` | `true` | yes |
+| `AUTH_COOKIE_SAMESITE` | `none` (the frontend is on another site) | yes |
+| `ALLOWED_ORIGINS` | the exact frontend origin, e.g. `https://tazakhabar.vercel.app` | yes |
+| `ADMIN_TOKEN` | a random string, guards the write endpoints | yes |
+| `GROQ_API_KEY` | your Groq key, for resume scoring and the career bot | recommended |
+| `OPENROUTER_API_KEY` | your OpenRouter key, used when Groq fails | recommended |
+| `EMBEDDINGS_ENABLED` | `false` (embeddings come from the workflow) | recommended |
+| `LOG_LEVEL` | `INFO` | optional |
+
+Delete any leftovers from the old service: `LOG_DIR`, `NOTEBOOK_SYNC_*`,
+`KEEPALIVE_*`, `DATABASE_URL`, `SUPABASE_*`.
 
 The service logs to stdout only, so it never writes to the Render disk.
+
+After the first deploy, point Vercel's `NEXT_PUBLIC_API_URL` at the new Render
+URL. The two must agree: `ALLOWED_ORIGINS` has to be exactly the origin the
+browser calls from, or the browser drops the session cookie and every request
+comes back 401.
+
+On the free tier the instance sleeps after 15 minutes idle, so the first
+request after a pause takes 30-50 seconds. A scheduled ping (a GitHub Actions
+job hitting `/health`) keeps it warm if that matters.
 
 ### GitHub Actions (scraping)
 

@@ -1,6 +1,6 @@
-# Runtime dependencies for the TazaKhabar API service (Render).
-# No torch / sentence-transformers: embeddings are produced by the GitHub
-# Actions workflow, the API only reads them from Pyronites.
+# Base dependencies: the API service, the scrapers and the trend job.
+# No torch / sentence-transformers here: embeddings are produced by the
+# embeddings workflow, which installs requirements.embeddings.txt.
 fastapi==0.115.6
 uvicorn[standard]==0.27.1
 hypercorn==0.16.0
@@ -16,5 +16,5 @@ google-genai==1.67.0
 openrouter==0.7.11
 groq==0.14.0
 pymupdf==1.26.7
-scikit-learn==1.4.1
-numpy>=1.26,<3
+scikit-learn==1.4.0
+numpy>=1.26,<2

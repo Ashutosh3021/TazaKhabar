@@ -2,10 +2,10 @@
 Embedding service for TazaKhabar RAG personalization.
 Uses sentence-transformers (all-MiniLM-L6-v2) for embedding generation.
 """
+import asyncio
 import logging
 import uuid
-import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 
@@ -181,19 +181,27 @@ async def backfill_missing_embeddings(limit: int = 200) -> dict:
 
     semaphore = asyncio.Semaphore(5)
 
-    async def _embed_news(item: dict) -> None:
+    async def _embed_news(item: dict) -> Optional[bytes]:
         async with semaphore:
             try:
-                await embed_news_item(item["id"], item["title"], item["summary"], item["type"])
+                text = f"{(item['type'] or 'news').upper()}: {item['title']} {item.get('summary') or ''}"
+                blob = generate_text_embedding(text[:2000])
+                await repos.upsert_embedding(item["id"], "news", blob)
+                return blob
             except Exception:
                 logger.exception(f"Failed to embed news {item['id']}")
+                return None
 
-    async def _embed_job(item: dict) -> None:
+    async def _embed_job(item: dict) -> Optional[bytes]:
         async with semaphore:
             try:
-                await embed_job_item(item["id"], item["title"], item["company"], item.get("location"))
+                text = f"JOB: {item['title']} at {item['company']} {item.get('location') or ''}"
+                blob = generate_text_embedding(text[:2000])
+                await repos.upsert_embedding(item["id"], "job", blob)
+                return blob
             except Exception:
                 logger.exception(f"Failed to embed job {item['id']}")
+                return None
 
     tasks = [asyncio.create_task(_embed_news(item)) for item in missing_news]
     tasks += [asyncio.create_task(_embed_job(item)) for item in missing_jobs]

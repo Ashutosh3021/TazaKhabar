@@ -1,0 +1,4 @@
+# Base dependencies plus the embedding model, for the daily embeddings
+# workflow and for local embedding work. Torch makes this install heavy.
+-r requirements.txt
+sentence-transformers==5.2.3

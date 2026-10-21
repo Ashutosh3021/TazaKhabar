@@ -1,0 +1,64 @@
+name: scrape-fallback
+
+# GitHub's scheduler is best effort: it can skip a slot without a word. This
+# workflow checks every half hour whether scrape.yml actually ran in the last
+# two hours and dispatches one when it did not. The dispatch uses the built-in
+# GITHUB_TOKEN, so no extra secret is needed.
+run-name: scrape-fallback
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: scrape-fallback
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch a scrape when one is missing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the last scrape run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const windowHours = 2;
+            const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: 'scrape.yml',
+              per_page: 20,
+              created: `>=${since}`,
+            });
+
+            const ranRecently = runs.data.some(
+              (run) => run.status === 'completed' && run.conclusion === 'success'
+            );
+
+            const inFlight = runs.data.some(
+              (run) => run.status === 'in_progress' || run.status === 'queued'
+            );
+
+            if (inFlight) {
+              core.info('a scrape is already running, nothing to do');
+            } else if (ranRecently) {
+              core.info('a scrape ran in the last ' + windowHours + ' hours, nothing to do');
+            } else {
+              core.info('no successful scrape in the last ' + windowHours + ' hours, dispatching one');
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'scrape.yml',
+                ref: context.ref.replace('refs/heads/', ''),
+              });
+            }

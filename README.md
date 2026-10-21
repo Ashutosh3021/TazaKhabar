@@ -192,15 +192,18 @@ Three workflows, all needing the repository secrets `PYRONITES_URL`,
 `PYRONITES_KEY`, `PYRONITES_PROJECT_ID` (and `GROQ_API_KEY` /
 `OPENROUTER_API_KEY` for the trend job):
 
-| Workflow | Schedule | What it does |
+| Workflow | Triggers | What it does |
 |---|---|---|
-| `scrape.yml` | every 2 hours (`0 */2 * * *` UTC) | scrape HN, summarize the new items |
-| `trends.yml` | daily (`15 0 * * *` UTC) | recount the weekly keywords, write the market observation |
-| `embeddings.yml` | daily (`30 3 * * *` UTC) | backfill the content embeddings |
+| `scrape.yml` | push to `main`, every 2 hours, manual | scrape HN, summarize the new items |
+| `trends.yml` | push to `main`, daily (`15 0 * * *` UTC), manual | recount the weekly keywords, write the market observation |
+| `embeddings.yml` | daily (`30 3 * * *` UTC), manual | backfill the content embeddings |
+| `scrape-fallback.yml` | every 30 minutes | dispatches a scrape when one has not succeeded in the last 2 hours |
 
 GitHub cron is best effort: a scheduled run usually starts a few minutes after
-the hour, sometimes later. The `concurrency` block stops two runs from
-overlapping, and `workflow_dispatch` runs any of them on demand.
+the hour, and the scheduler sometimes skips a slot without a word. The
+`scrape-fallback.yml` workflow closes that gap — it checks every half hour and
+dispatches a run when the 2-hourly one was missed. The `concurrency` block stops
+two runs from overlapping, and `workflow_dispatch` runs any of them on demand.
 
 Who Is Hiring publishes one thread per month. The scraper records the thread it
 processed, so most cycles find that thread and skip it; the other three

@@ -2,7 +2,21 @@ name: scrape
 
 # The scrapers run here, not on Render: the API service stays stateless and
 # the Render disk is never used for scraped data.
+#
+# Triggers:
+#   push to main  - a fresh run right after every deploy
+#   every 2 hours - the steady cadence
+#   manual        - on demand
+#
+# The scheduler in GitHub Actions is best effort and can silently skip a slot,
+# so scrape-fallback.yml watches this workflow and dispatches a run when one
+# has not happened for two hours.
+run-name: scrape (${{ github.event_name }})
+
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "0 */2 * * *"
   workflow_dispatch:

@@ -1,8 +1,14 @@
 name: trends
 
 # Weekly keyword counts plus the LLM market observation. The counts depend on
-# a full week of scrapes, so once a day is enough.
+# a full week of scrapes, so once a day is enough. A push to main also runs it,
+# so the trends are fresh right after a deploy.
+run-name: trends (${{ github.event_name }})
+
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "15 0 * * *"
   workflow_dispatch:

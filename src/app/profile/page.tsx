@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import AppShell from "@/components/AppShell";
 import { useRouter } from "next/navigation";
@@ -26,6 +27,7 @@ interface AtsResult {
 export default function ProfilePage() {
   const router = useRouter();
   const { userProfile, setUserProfile, resetAll, resumeUploaded, setResumeUploaded } = useTaza();
+  const { session, sessionLoading, refreshSession, signOutUser } = useTaza();
 
   const [mobileTab, setMobileTab] = useState<MobileTab>("ACCOUNT");
   const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
@@ -229,6 +231,15 @@ export default function ProfilePage() {
   const exp =
     EXPERIENCE_MAP[userProfile.experienceLevel] ?? { label: "Senior+", roman: "IV" as const };
 
+  const handleSignOut = async () => {
+    await signOutUser();
+    resetAll();
+    await refreshSession();
+    router.push("/auth");
+  };
+
+  const signedIn = Boolean(session);
+
   return (
     <AppShell>
       <div className="space-y-10">
@@ -240,15 +251,28 @@ export default function ProfilePage() {
           <p className="mono-label mt-4 text-dim-text">Manage your intelligence parameters</p>
         </header>
 
+        {!sessionLoading && !signedIn && (
+          <div className="panel border-primary/40 p-5" role="status">
+            <p className="mono-label text-neutral-beige">Not signed in</p>
+            <p className="mono-label mt-2 text-[11px] text-dim-text">
+              Sign in to save your roles, resume and ATS results to your account. They are
+              kept in this browser only until then.
+            </p>
+            <Link href="/auth" className="btn btn--primary mt-4">
+              Go to the access terminal
+              <span className="material-symbols-outlined text-[18px]" aria-hidden>
+                arrow_forward
+              </span>
+            </Link>
+          </div>
+        )}
+
         {/* Desktop layout */}
         <div className="hidden md:grid md:grid-cols-12 gap-8">
           <aside className="md:col-span-4 flex flex-col gap-8">
             <AccountCard
-              email={userProfile.email}
-              onSignOut={() => {
-                resetAll();
-                router.push("/");
-              }}
+              email={session?.email || userProfile.email}
+              onSignOut={handleSignOut}
             />
             <ResumeCard
               atsScore={atsScore}
@@ -297,11 +321,8 @@ export default function ProfilePage() {
           {mobileTab === "ACCOUNT" && (
             <div className="space-y-8">
               <AccountCard
-                email={userProfile.email}
-                onSignOut={() => {
-                  resetAll();
-                  router.push("/");
-                }}
+                email={session?.email || userProfile.email}
+                onSignOut={handleSignOut}
               />
               <ResumeCard
                 atsScore={atsScore}

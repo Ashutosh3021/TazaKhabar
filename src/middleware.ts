@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 /**
- * Route gate. The session cookie is set by the backend on sign in; its
- * presence is checked here, the backend validates it on every request.
+ * Route gate.
+ *
+ * The session cookie (tk_session) is httpOnly and host-only on the API
+ * domain, so this middleware can never see it. It reads the first-party
+ * hint cookie instead, which the client sets after a successful sign in.
+ * The hint only decides which pages to send to /auth; the API validates
+ * every request and returns 401 when the session is missing.
  */
-const SESSION_COOKIE = "tk_session";
+const SESSION_HINT_COOKIE = "tk_hint";
 
 const PROTECTED_PATHS = [
   "/setup",
@@ -18,20 +23,20 @@ const PROTECTED_PATHS = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const hasHint = Boolean(request.cookies.get(SESSION_HINT_COOKIE)?.value);
 
   const isProtected = PROTECTED_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
-  if (isProtected && !hasSession) {
+  if (isProtected && !hasHint) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
-  if (pathname === "/auth" && hasSession) {
+  if (pathname === "/auth" && hasHint) {
     const url = request.nextUrl.clone();
     url.pathname = "/setup/1";
     url.search = "";

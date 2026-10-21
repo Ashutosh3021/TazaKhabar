@@ -15,7 +15,14 @@ const OPTIONS = [
 export default function SetupStep2Page() {
   const router = useRouter();
   const { userProfile, setUserProfile } = useTaza();
+  const { session } = useTaza();
 
+  function pickExperience(roman: string) {
+    setUserProfile({ ...userProfile, experienceLevel: roman });
+    if (session) {
+      updateProfile({ experience_level: roman }).catch(() => undefined);
+    }
+  }
   return (
     <SetupFrame
       step={2}
@@ -29,6 +36,12 @@ export default function SetupStep2Page() {
       onNext={() => router.push("/setup/3")}
       nextLabel="Continue"
     >
+      {!session && (
+        <p className="mono-label mb-6 text-[11px] text-primary">
+          Not signed in yet, so this choice stays in this browser. Sign in on the access
+          terminal to keep it on your account.
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         {OPTIONS.map((o) => {
           const isSelected = userProfile.experienceLevel === o.roman;
@@ -37,10 +50,7 @@ export default function SetupStep2Page() {
               key={o.roman}
               type="button"
               aria-pressed={isSelected}
-              onClick={() => {
-                setUserProfile({ ...userProfile, experienceLevel: o.roman });
-                updateProfile({ experience_level: o.roman }).catch(() => undefined);
-              }}
+              onClick={() => pickExperience(o.roman)}
               className={`panel flex items-center justify-between gap-4 p-5 text-left transition-colors ${
                 isSelected ? "panel--accent bg-primary/[0.06]" : "hover:bg-card-hi"
               }`}

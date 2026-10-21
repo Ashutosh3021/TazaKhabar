@@ -23,6 +23,7 @@ const ROLE_CHIPS = [
 export default function SetupStep1Page() {
   const router = useRouter();
   const { userProfile, setUserProfile } = useTaza();
+  const { session } = useTaza();
 
   const selected = userProfile.roles;
 
@@ -31,7 +32,10 @@ export default function SetupStep1Page() {
     const nextRoles = has ? selected.filter((r) => r !== role) : [...selected, role];
     setUserProfile({ ...userProfile, roles: nextRoles });
     // Keep the server copy in sync so personalization has the same roles.
-    updateProfile({ roles: nextRoles }).catch(() => undefined);
+    // Without a session the backend rejects the write, so only try when signed in.
+    if (session) {
+      updateProfile({ roles: nextRoles }).catch(() => undefined);
+    }
   }
 
   return (
@@ -52,6 +56,12 @@ export default function SetupStep1Page() {
           ? `${String(selected.length).padStart(2, "0")} channel${selected.length > 1 ? "s" : ""} armed`
           : "Select every role you want the radar to watch"}
       </p>
+      {!session && (
+        <p className="mono-label mb-6 text-[11px] text-primary">
+          Not signed in yet, so these choices stay in this browser. Sign in on the access
+          terminal to keep them on your account.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {ROLE_CHIPS.map((role) => {
           const isSelected = selected.includes(role);

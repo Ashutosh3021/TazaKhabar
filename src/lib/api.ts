@@ -71,6 +71,27 @@ async function readAuthError(res: Response, fallback: string): Promise<string> {
   return fallback;
 }
 
+/**
+ * First-party hint cookie, set on the frontend domain after a sign in.
+ *
+ * The real session cookie (tk_session) is httpOnly and host-only on the API
+ * domain, so the frontend domain can never read it. This hint only tells the
+ * Next.js middleware which pages to send to /auth; the API still validates
+ * every request.
+ */
+export const SESSION_HINT_COOKIE = "tk_hint";
+
+function setSessionHint() {
+  if (typeof document === "undefined") return;
+  const maxAge = 60 * 60 * 24 * 14;
+  document.cookie = `${SESSION_HINT_COOKIE}=1; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+function clearSessionHint() {
+  if (typeof document === "undefined") return;
+  document.cookie = `${SESSION_HINT_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+}
+
 /** Create an account, or sign in when the account already exists. */
 export async function signUp(email: string, password: string): Promise<AuthResult> {
   const res = await apiFetch(`${getApiBase()}/api/auth/signup`, {
@@ -80,6 +101,7 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   if (!res.ok) {
     throw new Error(await readAuthError(res, "Sign up failed"));
   }
+  setSessionHint();
   return res.json();
 }
 
@@ -92,12 +114,14 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   if (!res.ok) {
     throw new Error(await readAuthError(res, "Sign in failed"));
   }
+  setSessionHint();
   return res.json();
 }
 
 /** Drop the session on the backend and in the browser. */
 export async function signOut(): Promise<void> {
   await apiFetch(`${getApiBase()}/api/auth/logout`, { method: "POST" });
+  clearSessionHint();
 }
 
 /** Resolve the current session. */

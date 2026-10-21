@@ -4,12 +4,23 @@ import React, { createContext, useContext } from "react";
 import type { ActiveFilters, UserProfile } from "@/types";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { jobs as mockJobs } from "@/lib/mockData"; // DEPRECATED — used only for default saved jobs fallback
-import { fetchJobs, fetchNews } from "@/lib/api";
+import { fetchJobs, fetchNews, fetchSession, signOut } from "@/lib/api";
 import { useHealthCheck } from "@/lib/useHealthCheck";
+
+export type TazaSession = {
+  id: string | null;
+  email: string | null;
+} | null;
 
 type TazaContextValue = {
   userProfile: UserProfile;
   setUserProfile: (profile: UserProfile) => void;
+
+  // Signed-in session, resolved from the backend (the source of truth).
+  session: TazaSession;
+  sessionLoading: boolean;
+  refreshSession: () => Promise<void>;
+  signOutUser: () => Promise<void>;
 
   savedJobs: string[];
   toggleSavedJob: (jobId: string) => void;
@@ -85,6 +96,36 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
   const [isFetchingFeed, setIsFetchingFeed] = React.useState(false);
   const [isFetchingRadar, setIsFetchingRadar] = React.useState(false);
 
+  // The session lives in the backend (httpOnly cookie on the API domain).
+  // /api/auth/me is the only way the frontend can know who is signed in.
+  const [session, setSession] = React.useState<TazaSession>(null);
+  const [sessionLoading, setSessionLoading] = React.useState(true);
+
+  const refreshSession = React.useCallback(async () => {
+    try {
+      const result = await fetchSession();
+      setSession(
+        result.authenticated
+          ? { id: result.user.id, email: result.user.email }
+          : null
+      );
+    } catch {
+      setSession(null);
+    } finally {
+      setSessionLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
+
+  const signOutUser = React.useCallback(async () => {
+    await signOut();
+    setSession(null);
+    userStorage.setValue(DEFAULT_PROFILE);
+  }, [userStorage]);
+
   const refreshFeed = () => {
     if (isFetchingFeed) return;
     setIsFetchingFeed(true);
@@ -117,6 +158,11 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
   const value: TazaContextValue = {
     userProfile: userStorage.value,
     setUserProfile: userStorage.setValue,
+
+    session,
+    sessionLoading,
+    refreshSession,
+    signOutUser,
 
     savedJobs: savedStorage.value,
     toggleSavedJob: (jobId) => {

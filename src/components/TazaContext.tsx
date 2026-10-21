@@ -59,8 +59,8 @@ const DEFAULT_SCRAPE = {
 const TazaContext = createContext<TazaContextValue | null>(null);
 
 export function TazaProvider({ children }: { children: React.ReactNode }) {
-  // Check Supabase health on mount
-  useHealthCheck('supabase', 500);
+  // Check the Pyronites backend health on mount
+  useHealthCheck('pyronites', 500);
 
   const userStorage = useLocalStorage<UserProfile>(
     "tazakhabar:userProfile",

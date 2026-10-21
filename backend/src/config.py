@@ -25,7 +25,12 @@ def normalize_async_database_url(url: str) -> str:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
+        env_file=(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"
+            ),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -36,6 +41,27 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_database_url(cls, v: str) -> str:
         return normalize_async_database_url(v)
+
+    # Pyronites (PyroCore): auth, tables and file storage.
+    PYRONITES_URL: str = ""
+    PYRONITES_KEY: str = ""
+    PYRONITES_PROJECT_ID: str = ""
+    PYRONITES_TIMEOUT_SEC: float = 30.0
+
+    # Browser session: httpOnly cookie that carries the Pyronites session.
+    AUTH_SESSION_COOKIE: str = "tk_session"
+    AUTH_SESSION_SECRET: str = ""
+    AUTH_SESSION_TTL_SEC: int = 60 * 60 * 24 * 14
+    # When true, private endpoints reject anonymous callers.
+    AUTH_REQUIRED: bool = True
+    # Cross-site cookie settings: the frontend (Vercel) and API (Render) are
+    # different sites, so production needs SameSite=None + Secure. Local
+    # development on http://localhost needs Lax without Secure.
+    AUTH_COOKIE_SECURE: bool = True
+    AUTH_COOKIE_SAMESITE: str = "none"
+
+    # Guards the write endpoints (scrape trigger, CSV load, embeddings backfill).
+    ADMIN_TOKEN: str = ""
 
     OPENROUTER_API_KEY: str = "your_key_here"
     GROQ_API_KEY: str = "your_key_here"

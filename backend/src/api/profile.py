@@ -1,18 +1,18 @@
 """
 User profile API endpoint.
-GET /api/profile — Get user profile with ATS data.
-POST /api/profile — Create or update user profile.
+GET /api/profile — Get the signed-in user's profile with ATS data.
+POST /api/profile — Create or update the signed-in user's profile.
+
+Identity comes from the Pyronites session, never from a client supplied header.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.deps import get_db
-from src.db.database import async_session
-from src.db.models import User
+from src.api.deps import require_user
+from src.db import repos
 from src.db.schemas import ProfileResponse, ProfileUpdateRequest
 
 logger = logging.getLogger(__name__)
@@ -20,142 +20,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 
-@router.get("", response_model=ProfileResponse)
-async def get_profile(
-    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
-    db: AsyncSession = Depends(get_db),
-) -> ProfileResponse:
-    """
-    Get user profile by X-User-ID header.
-    Returns empty profile if user not found.
-    """
-    print(f"\n>>> [API:GET /api/profile] User: {x_user_id}")
-
-    if not x_user_id:
+def _to_response(profile: Dict[str, Any] | None) -> ProfileResponse:
+    if not profile:
         return ProfileResponse()
-
-    async with async_session() as session:
-        stmt = select(User).where(User.id == x_user_id)
-        result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-    if user is None:
-        print(f">>> [API:GET /api/profile] User not found, returning empty")
-        return ProfileResponse()
-
-    last_analysis_str = (
-        user.last_analysis_at.isoformat() if user.last_analysis_at else None
-    )
-
-    print(f">>> [API:GET /api/profile] Found user: {user.name}, ats_score={user.ats_score}")
-
     return ProfileResponse(
-        id=user.id,
-        name=user.name,
-        email=user.email,
-        roles=user.roles or [],
-        experience_level=user.experience_level,
-        ats_score=user.ats_score,
-        ats_critical_issues=user.ats_critical_issues or [],
-        ats_missing_keywords=user.ats_missing_keywords or [],
-        ats_suggested_additions=user.ats_suggested_additions or [],
-        last_analysis_at=last_analysis_str,
-        resume_text_length=len(user.resume_text) if user.resume_text else None,
-        resume_path=user.resume_path,
-        preferences=user.preferences or {},
+        id=profile.get("id"),
+        name=profile.get("name"),
+        email=profile.get("email"),
+        roles=profile.get("roles") or [],
+        experience_level=profile.get("experience_level") or "I",
+        ats_score=profile.get("ats_score"),
+        ats_critical_issues=profile.get("ats_critical_issues") or [],
+        ats_missing_keywords=profile.get("ats_missing_keywords") or [],
+        ats_suggested_additions=profile.get("ats_suggested_additions") or [],
+        last_analysis_at=profile.get("last_analysis_at"),
+        resume_text_length=len(profile.get("resume_text") or "") or None,
+        resume_path=profile.get("resume_path"),
+        preferences=profile.get("preferences") or {},
     )
+
+
+@router.get("", response_model=ProfileResponse)
+async def get_profile(user: Dict[str, Any] = Depends(require_user)) -> ProfileResponse:
+    """Return the profile of the signed-in user, empty when not set up yet."""
+    profile = await repos.get_profile(user["id"])
+    return _to_response(profile)
 
 
 @router.post("", response_model=ProfileResponse)
 async def update_profile(
     data: ProfileUpdateRequest,
-    x_user_id: str | None = Header(default=None, alias="X-User-ID"),
-    db: AsyncSession = Depends(get_db),
+    user: Dict[str, Any] = Depends(require_user),
 ) -> ProfileResponse:
-    """
-    Create or update user profile.
-    Requires X-User-ID header.
-    Regenerates user embedding on save (placeholder for Plan 02-03).
-    """
-    print(f"\n>>> [API:POST /api/profile] User: {x_user_id}, data: {data.model_dump()}")
-
-    if not x_user_id:
-        raise HTTPException(
-            status_code=400,
-            detail="X-User-ID header required",
-        )
-
-    async with async_session() as session:
-        stmt = select(User).where(User.id == x_user_id)
-        result = await session.execute(stmt)
-        user = result.scalar_one_or_none()
-
-        if user is None:
-            user = User(
-                id=x_user_id,
-                name=data.name or "Anonymous",
-                email=data.email,
-                roles=data.roles,
-                experience_level=data.experience_level,
-                resume_path=data.resume_path,
-                preferences=data.preferences or {},
-            )
-            session.add(user)
-            print(f">>> [API:POST /api/profile] Created new user")
-        else:
-            if data.name is not None:
-                user.name = data.name
-            if data.email is not None:
-                user.email = data.email
-            if data.roles is not None:
-                user.roles = data.roles
-            if data.experience_level is not None:
-                user.experience_level = data.experience_level
-            if data.resume_path is not None:
-                user.resume_path = data.resume_path
-            if data.preferences is not None:
-                user.preferences = data.preferences
-            print(f">>> [API:POST /api/profile] Updated user")
-
-        await session.commit()
-        await session.refresh(user)
-
-        try:
-            import asyncio
-            from src.services.embedding_service import generate_user_embedding
-
-            loop = asyncio.get_running_loop()
-            loop.create_task(
-                generate_user_embedding(
-                    user_id=user.id,
-                    roles=user.roles or [],
-                    experience=user.experience_level,
-                    resume_text=user.resume_text,
-                    preferences=user.preferences or {},
-                )
-            )
-            print(f">>> [API:POST /api/profile] Triggered embedding regeneration")
-        except ImportError:
-            print(f">>> [API:POST /api/profile] Embedding service import failed (may be circular)")
-        except Exception as e:
-            print(f">>> [API:POST /api/profile] Embedding regeneration failed: {e}")
-
-        last_analysis_str = (
-            user.last_analysis_at.isoformat() if user.last_analysis_at else None
-        )
-
-        return ProfileResponse(
-            id=user.id,
-            name=user.name,
-            email=user.email,
-            roles=user.roles or [],
-            experience_level=user.experience_level,
-            ats_score=user.ats_score,
-            ats_critical_issues=user.ats_critical_issues or [],
-            ats_missing_keywords=user.ats_missing_keywords or [],
-            ats_suggested_additions=user.ats_suggested_additions or [],
-            last_analysis_at=last_analysis_str,
-            resume_text_length=len(user.resume_text) if user.resume_text else None,
-            resume_path=user.resume_path,
-            preferences=user.preferences or {},
-        )
+    """Create or update the signed-in user's profile."""
+    updates: Dict[str, Any] = {
+        "name": data.name,
+        "email": data.email or user.get("email"),
+        "roles": data.roles,
+        "experience_level": data.experience_level,
+        "resume_path": data.resume_path,
+        "preferences": data.preferences or {},
+    }
+    profile = await repos.save_profile(user["id"], updates)
+    logger.info("Profile updated for user=%s", user["id"])
+    return _to_response(profile)

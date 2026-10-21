@@ -1,22 +1,23 @@
 """
 Health check API endpoints.
 
-Provides detailed health and connection status information for monitoring.
+Reports the state of the Pyronites backend that holds the data.
 """
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.db.supabase import supabase_client
 from src.config import settings
+from src.db.pyro import get_pyro
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-class SupabaseHealthResponse(BaseModel):
-    """Response model for Supabase health check."""
+class StorageHealthResponse(BaseModel):
+    """Response model for the storage health check."""
+
     storage: Dict[str, Any]
     email: Dict[str, Any]
     overall_status: str
@@ -25,67 +26,59 @@ class SupabaseHealthResponse(BaseModel):
 
 class SystemHealthResponse(BaseModel):
     """Response model for overall system health."""
+
     status: str
-    supabase: SupabaseHealthResponse
+    pyronites: Dict[str, Any]
     database: Dict[str, Any]
     timestamp: str
 
 
-@router.get("/supabase", response_model=SupabaseHealthResponse)
-async def supabase_health():
-    """
-    Check Supabase connection status.
-    
-    Returns detailed information about Supabase storage and email connectivity.
-    Can be called from frontend to display status in browser console.
-    """
+@router.get("/pyronites", response_model=StorageHealthResponse)
+async def pyronites_health() -> StorageHealthResponse:
+    """Check the Pyronites backend connection."""
+    timestamp = datetime.utcnow().isoformat()
     try:
-        connection_status = await supabase_client.check_supabase_connection()
-        return SupabaseHealthResponse(
-            storage=connection_status['storage'],
-            email=connection_status['email'],
-            overall_status=connection_status['overall_status'],
-            timestamp=datetime.utcnow().isoformat(),
+        healthy = await get_pyro().healthy()
+        return StorageHealthResponse(
+            storage={"configured": True, "connected": healthy},
+            email={"configured": bool(settings.EMAIL_SMTP_HOST), "connected": False},
+            overall_status="connected" if healthy else "error",
+            timestamp=timestamp,
         )
     except Exception as e:
-        return SupabaseHealthResponse(
-            storage={'configured': False, 'connected': False, 'error': str(e)},
-            email={'configured': False, 'connected': False, 'error': str(e)},
-            overall_status='error',
-            timestamp=datetime.utcnow().isoformat(),
+        return StorageHealthResponse(
+            storage={"configured": True, "connected": False, "error": str(e)},
+            email={"configured": bool(settings.EMAIL_SMTP_HOST), "connected": False},
+            overall_status="error",
+            timestamp=timestamp,
         )
 
 
 @router.get("/detailed", response_model=SystemHealthResponse)
-async def detailed_health():
-    """
-    Get detailed system health including Supabase and database status.
-    
-    Returns comprehensive health information for monitoring and diagnostics.
-    """
-    try:
-        connection_status = await supabase_client.check_supabase_connection()
-    except Exception as e:
-        connection_status = {
-            'storage': {'configured': False, 'connected': False, 'error': str(e)},
-            'email': {'configured': False, 'connected': False, 'error': str(e)},
-            'overall_status': 'error'
-        }
+async def detailed_health() -> SystemHealthResponse:
+    """Detailed health information for monitoring and diagnostics."""
+    timestamp = datetime.utcnow().isoformat()
 
-    # Check database
-    database_status = {
-        'configured': bool(settings.DATABASE_URL),
-        'url_type': 'sqlite' if 'sqlite' in settings.DATABASE_URL else 'postgresql',
-    }
+    try:
+        healthy = await get_pyro().healthy()
+        tables = await get_pyro().table_names()
+        backend = {
+            "configured": True,
+            "connected": healthy,
+            "url": settings.PYRONITES_URL,
+            "project_id": settings.PYRONITES_PROJECT_ID,
+            "tables": len(tables),
+        }
+    except Exception as e:
+        healthy = False
+        backend = {"configured": True, "connected": False, "error": str(e)}
 
     return SystemHealthResponse(
-        status='healthy' if connection_status['overall_status'] != 'error' else 'degraded',
-        supabase=SupabaseHealthResponse(
-            storage=connection_status['storage'],
-            email=connection_status['email'],
-            overall_status=connection_status['overall_status'],
-            timestamp=datetime.utcnow().isoformat(),
-        ),
-        database=database_status,
-        timestamp=datetime.utcnow().isoformat(),
+        status="healthy" if healthy else "degraded",
+        pyronites=backend,
+        database={
+            "type": "pyronites",
+            "project_id": settings.PYRONITES_PROJECT_ID,
+        },
+        timestamp=timestamp,
     )

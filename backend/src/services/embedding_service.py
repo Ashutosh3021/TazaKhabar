@@ -8,12 +8,8 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models import Job, News, Embedding
-
-from src.db.database import async_session
+from src.db import repos
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -124,30 +120,12 @@ async def generate_user_embedding(
     preferences: dict | None = None,
 ) -> None:
     """
-    Generate and store embedding for a user profile.
-    Upserts: deletes old embedding, inserts new one.
+    Generate and store the embedding for a user profile.
+    Replaces any previous embedding for that user.
     """
     text = generate_user_profile_text(roles, experience, resume_text, preferences)
     embedding_bytes = generate_text_embedding(text)
-
-    async with async_session() as session:
-        # Delete old user profile embedding
-        await session.execute(
-            delete(Embedding).where(
-                Embedding.item_id == user_id,
-                Embedding.item_type == "user_profile",
-            )
-        )
-        # Insert new embedding
-        session.add(
-            Embedding(
-                id=uuid.uuid4().hex,
-                item_id=user_id,
-                item_type="user_profile",
-                embedding=embedding_bytes,
-            )
-        )
-        await session.commit()
+    await repos.upsert_embedding(user_id, "user_profile", embedding_bytes)
     logger.info(f"Generated and stored user profile embedding for user_id={user_id}")
 
 
@@ -158,33 +136,16 @@ async def embed_news_item(
     news_type: str,
 ) -> None:
     """
-    Generate and store embedding for a news item.
-    Incremental: skips if already embedded.
+    Generate and store the embedding for a news item.
+    Incremental: skips when the item already has an embedding.
     """
-    # Combine title + summary + type
     text = f"{news_type.upper()}: {title} {summary or ''}"
     embedding_bytes = generate_text_embedding(text[:2000])
 
-    async with async_session() as session:
-        # Check if already embedded
-        existing = await session.execute(
-            select(Embedding).where(
-                Embedding.item_id == news_id,
-                Embedding.item_type == "news",
-            )
-        )
-        if existing.scalar_one_or_none():
-            return  # Already embedded
+    if await repos.get_embedding(news_id, "news"):
+        return
 
-        session.add(
-            Embedding(
-                id=uuid.uuid4().hex,
-                item_id=news_id,
-                item_type="news",
-                embedding=embedding_bytes,
-            )
-        )
-        await session.commit()
+    await repos.upsert_embedding(news_id, "news", embedding_bytes)
     logger.info(f"Generated and stored content embedding for news_id={news_id}")
 
 
@@ -195,101 +156,57 @@ async def embed_job_item(
     location: str | None,
 ) -> None:
     """
-    Generate and store embedding for a job item.
-    Incremental: skips if already embedded.
+    Generate and store the embedding for a job item.
+    Incremental: skips when the item already has an embedding.
     """
     text = f"JOB: {title} at {company} {location or ''}"
     embedding_bytes = generate_text_embedding(text[:2000])
 
-    async with async_session() as session:
-        existing = await session.execute(
-            select(Embedding).where(
-                Embedding.item_id == job_id,
-                Embedding.item_type == "job",
-            )
-        )
-        if existing.scalar_one_or_none():
-            return
+    if await repos.get_embedding(job_id, "job"):
+        return
 
-        session.add(
-            Embedding(
-                id=uuid.uuid4().hex,
-                item_id=job_id,
-                item_type="job",
-                embedding=embedding_bytes,
-            )
-        )
-        await session.commit()
-
+    await repos.upsert_embedding(job_id, "job", embedding_bytes)
     logger.info(f"Generated and stored content embedding for job_id={job_id}")
 
 
-async def backfill_missing_embeddings(session: AsyncSession) -> dict:
+async def backfill_missing_embeddings(limit: int = 200) -> dict:
     """
-    Find News and Job items missing embeddings and generate them with limited concurrency.
+    Generate embeddings for jobs and news that do not have one yet.
 
     Returns:
         dict with counts: {"news_queued": n, "jobs_queued": m}
-
-    BUG FIX [M9]: provide idempotent embedding backfill and limited concurrency.
     """
-    # Fetch existing embedding ids for news and jobs
-    existing_news_res = await session.execute(select(Embedding.item_id).where(Embedding.item_type == "news"))
-    existing_news_ids = {r[0] for r in existing_news_res.all()}
-
-    existing_job_res = await session.execute(select(Embedding.item_id).where(Embedding.item_type == "job"))
-    existing_job_ids = {r[0] for r in existing_job_res.all()}
-
-    # Find missing news
-    if existing_news_ids:
-        news_stmt = select(News).where(~News.id.in_(existing_news_ids))
-    else:
-        news_stmt = select(News)
-    news_res = await session.execute(news_stmt)
-    missing_news = news_res.scalars().all()
-
-    # Find missing jobs
-    if existing_job_ids:
-        job_stmt = select(Job).where(~Job.id.in_(existing_job_ids))
-    else:
-        job_stmt = select(Job)
-    job_res = await session.execute(job_stmt)
-    missing_jobs = job_res.scalars().all()
-
-    news_queued = 0
-    jobs_queued = 0
+    missing_news = await repos.news_without_embeddings(limit)
+    missing_jobs = await repos.jobs_without_embeddings(limit)
 
     semaphore = asyncio.Semaphore(5)
 
-    async def _wrap_embed_news(n_id, title, summary, n_type):
+    async def _embed_news(item: dict) -> None:
         async with semaphore:
             try:
-                await embed_news_item(n_id, title, summary, n_type)
+                await embed_news_item(item["id"], item["title"], item["summary"], item["type"])
             except Exception:
-                logger.exception(f"Failed to embed news {n_id}")
+                logger.exception(f"Failed to embed news {item['id']}")
 
-    async def _wrap_embed_job(j_id, title, company, location):
+    async def _embed_job(item: dict) -> None:
         async with semaphore:
             try:
-                await embed_job_item(j_id, title, company, location)
+                await embed_job_item(item["id"], item["title"], item["company"], item.get("location"))
             except Exception:
-                logger.exception(f"Failed to embed job {j_id}")
+                logger.exception(f"Failed to embed job {item['id']}")
 
-    tasks = []
-    for n in missing_news:
-        tasks.append(asyncio.create_task(_wrap_embed_news(n.id, getattr(n, "title", ""), getattr(n, "summary", None), getattr(n, "type", "news"))))
-        news_queued += 1
-
-    for j in missing_jobs:
-        tasks.append(asyncio.create_task(_wrap_embed_job(j.id, getattr(j, "title", ""), getattr(j, "company", ""), getattr(j, "location", None))))
-        jobs_queued += 1
+    tasks = [asyncio.create_task(_embed_news(item)) for item in missing_news]
+    tasks += [asyncio.create_task(_embed_job(item)) for item in missing_jobs]
 
     if tasks:
-        # Wait for all scheduled embedding tasks to complete
         await asyncio.gather(*tasks)
 
-    logger.info(f"Backfilled embeddings: news_queued={news_queued}, jobs_queued={jobs_queued}")
-    return {"news_queued": news_queued, "jobs_queued": jobs_queued}
+    logger.info(
+        "Backfilled embeddings: news_queued=%s, jobs_queued=%s",
+        len(missing_news),
+        len(missing_jobs),
+    )
+    return {"news_queued": len(missing_news), "jobs_queued": len(missing_jobs)}
 
 
 # ---------------------------------------------------------------------------

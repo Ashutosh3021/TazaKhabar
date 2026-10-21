@@ -3,8 +3,9 @@ CSV Loader API endpoint for loading jobs from AmbitionBox CSV files.
 """
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
+from src.config import settings
 from src.services.csv_loader_service import get_csv_stats
 from src.services.notebook_sync_service import sync_jobs_csv
 
@@ -15,9 +16,7 @@ router = APIRouter(prefix="/api/csv", tags=["csv"])
 
 @router.get("/stats")
 async def get_csv_statistics():
-    """
-    Get statistics about the CSV files.
-    """
+    """Get statistics about the CSV files."""
     try:
         stats = await get_csv_stats()
         return {"status": "success", "data": stats}
@@ -29,12 +28,16 @@ async def get_csv_statistics():
 @router.post("/load-jobs")
 async def load_csv_jobs(
     force: bool = Query(default=True, description="Force sync even if CSV unchanged"),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """
-    Load jobs from jobs_output.csv into the database (same as POST /api/notebooks/sync).
+    Load jobs from jobs_output.csv into the store.
 
-    Prefer POST /api/notebooks/sync from notebooks; the app also auto-syncs every 15s.
+    Requires the admin token when ADMIN_TOKEN is configured.
     """
+    if settings.ADMIN_TOKEN and x_admin_token != settings.ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Admin token required")
+
     try:
         logger.info("Manual CSV load via /api/csv/load-jobs")
         result = await sync_jobs_csv(force=force)
@@ -60,7 +63,7 @@ async def load_csv_jobs(
             status_code=400,
             detail=f"No jobs loaded: {result.get('errors', ['Unknown error'])}",
         )
-            
+
     except HTTPException:
         raise
     except Exception as e:

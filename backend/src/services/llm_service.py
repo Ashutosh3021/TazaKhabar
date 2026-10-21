@@ -12,11 +12,9 @@ from datetime import datetime, timedelta
 import httpx
 from groq import Groq as GroqClient
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
-from sqlalchemy import select
 
 from src.config import settings
-from src.db.database import async_session
-from src.db.models import News, RateLimit
+from src.db import repos
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +257,9 @@ async def check_rate_limit(user_id: str | None) -> tuple[bool, int]:
     """
     Check if user is within their daily rate limit.
 
+    The counter lives in the ``rate_limits`` table, keyed on the verified user
+    id. Anonymous callers share the ``anonymous`` bucket.
+
     Returns:
         (allowed: bool, retry_after: int seconds)
         retry_after = seconds until midnight UTC if limit exceeded.
@@ -266,64 +267,27 @@ async def check_rate_limit(user_id: str | None) -> tuple[bool, int]:
     today = datetime.utcnow().strftime("%Y-%m-%d")
     limit = DAILY_LIMITS["registered"] if user_id else DAILY_LIMITS["anonymous"]
 
-    async with async_session() as session:
-        # Find existing record
-        stmt = select(RateLimit).where(
-            RateLimit.user_id == user_id,
-            RateLimit.date == today,
-        )
-        result = await session.execute(stmt)
-        record = result.scalar_one_or_none()
-
-        if record is None:
-            # No record yet, user is within limit
-            return True, 0
-
-        if record.request_count >= limit:
-            # Calculate seconds until midnight UTC
-            now = datetime.utcnow()
-            tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-            retry_after = int((tomorrow - now).total_seconds())
-            logger.info(
-                f"Rate limit exceeded for user={user_id}: {record.request_count}/{limit}, retry_after={retry_after}s"
-            )
-            return False, retry_after
-
+    count = await repos.get_rate_limit(user_id, today)
+    if count < limit:
         return True, 0
+
+    now = datetime.utcnow()
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    retry_after = int((tomorrow - now).total_seconds())
+    logger.info(
+        f"Rate limit exceeded for user={user_id}: {count}/{limit}, retry_after={retry_after}s"
+    )
+    return False, retry_after
 
 
 async def increment_rate_limit(user_id: str | None) -> None:
     """
     Increment the rate limit counter for a user.
-    Creates a new record if none exists for today.
+    Creates a new record when none exists for today.
     """
     today = datetime.utcnow().strftime("%Y-%m-%d")
-
-    async with async_session() as session:
-        # Try to get existing record
-        stmt = select(RateLimit).where(
-            RateLimit.user_id == user_id,
-            RateLimit.date == today,
-        )
-        result = await session.execute(stmt)
-        record = result.scalar_one_or_none()
-
-        if record is None:
-            # Create new record
-            record = RateLimit(
-                user_id=user_id,
-                date=today,
-                request_count=1,
-                last_request_at=datetime.utcnow(),
-            )
-            session.add(record)
-        else:
-            # Increment existing
-            record.request_count += 1
-            record.last_request_at = datetime.utcnow()
-
-        await session.commit()
-        logger.debug(f"Rate limit incremented for user={user_id}: {record.request_count}")
+    count = await repos.bump_rate_limit(user_id, today)
+    logger.debug(f"Rate limit incremented for user={user_id}: {count}")
 
 
 async def check_and_increment(user_id: str | None) -> tuple[bool, int]:
@@ -345,66 +309,51 @@ async def check_and_increment(user_id: str | None) -> tuple[bool, int]:
 
 async def summarize_news_item(news_item_id: str) -> str | None:
     """
-    Summarize a single news item using OpenRouter LLM.
+    Summarize a single news item using the LLM.
 
     Returns:
-        The summary text, or None if already summarized or error.
+        The summary text, or None if already summarized or on error.
     """
-    async with async_session() as session:
-        stmt = select(News).where(News.id == news_item_id)
-        result = await session.execute(stmt)
-        news = result.scalar_one_or_none()
+    rows = await repos.news_by_id(news_item_id)
+    if not rows:
+        logger.warning(f"News item not found: {news_item_id}")
+        return None
 
-        if news is None:
-            logger.warning(f"News item not found: {news_item_id}")
+    news = rows
+    if news.get("summarized"):
+        logger.debug(f"News item already summarized, skipping: {news_item_id}")
+        return news.get("summary")
+
+    try:
+        prompt = SUMMARIZATION_PROMPT.format(
+            title=news.get("title") or "",
+            url=news.get("url") or "N/A",
+            score=news.get("score") or 0,
+        )
+        # Honor LLM rate limits before calling the external API
+        allowed, _retry_after = await check_rate_limit(LLM_SUMMARIZE_KEY)
+        if not allowed:
+            logger.warning("LLM rate limit reached, skipping summarization")
             return None
+        await check_and_increment(LLM_SUMMARIZE_KEY)
 
-        if news.summarized:
-            logger.debug(f"News item already summarized, skipping: {news_item_id}")
-            return news.summary
-
-        try:
-            prompt = SUMMARIZATION_PROMPT.format(
-                title=news.title,
-                url=news.url or "N/A",
-                score=news.score,
-            )
-            # BUG FIX [M7]: honor LLM rate limits before calling the external API
-            allowed, retry_after = await check_rate_limit(LLM_SUMMARIZE_KEY)
-            if not allowed:
-                logger.warning("LLM rate limit reached, skipping summarization")
-                return None
-            await check_and_increment(LLM_SUMMARIZE_KEY)
-
-            summary = await _call_llm(SUMMARIZATION_SYSTEM, prompt)
-            summary = summary.strip()
-
-            # Save summary to DB
-            news.summary = summary
-            news.summarized = True
-            news.summarized_at = datetime.utcnow()
-            await session.commit()
-            logger.info(f"Summarized news item {news_item_id}: {summary[:50]}...")
-            return summary
-        except Exception as e:
-            logger.error(f"Failed to summarize news item {news_item_id}: {e}")
-            return None
+        summary = (await _call_llm(SUMMARIZATION_SYSTEM, prompt)).strip()
+        await repos.mark_news_summarized(news_item_id, summary)
+        logger.info(f"Summarized news item {news_item_id}: {summary[:50]}...")
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to summarize news item {news_item_id}: {e}")
+        return None
 
 
 async def summarize_top_news(top_n: int = 20) -> None:
     """
     Summarize the top N unsummarized news items by score.
     Idempotent — skips items where summarized=True.
-    Background task — does NOT block the scraper.
     """
     logger.info(f"[SUMMARIZATION] Starting summarization of top {top_n} news items...")
 
-    async with async_session() as session:
-        # Get top N unsummarized items by score
-        stmt = select(News).where(News.summarized == False).order_by(News.score.desc()).limit(top_n)
-        result = await session.execute(stmt)
-        items = result.scalars().all()
-
+    items = await repos.unsummarized_news(top_n)
     if not items:
         logger.info("[SUMMARIZATION] No unsummarized items found")
         return
@@ -414,7 +363,7 @@ async def summarize_top_news(top_n: int = 20) -> None:
     error_count = 0
 
     for item in items:
-        summary = await summarize_news_item(item.id)
+        summary = await summarize_news_item(item["id"])
         if summary:
             success_count += 1
         else:

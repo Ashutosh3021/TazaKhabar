@@ -13,18 +13,32 @@ services:
         value: 3.11.9
       - key: LOG_LEVEL
         value: INFO
-      - key: LOG_DIR
-        value: logs
-      # Render free tier is too small for torch + sentence-transformers reliably.
+      # Embeddings are produced by the GitHub Actions workflow; the API only
+      # reads them from Pyronites, so no torch on the Render instance.
       - key: EMBEDDINGS_ENABLED
         value: "false"
-      # Disable notebook polling on Render unless you truly need it.
-      - key: NOTEBOOK_SYNC_ENABLED
-        value: "false"
-      - key: NOTEBOOK_SYNC_INTERVAL_SEC
-        value: "60"
-      # Enable keep-alive pings (see guide for KEEPALIVE_URL).
-      - key: KEEPALIVE_ENABLED
+      # Pyronites (PyroCore): auth, tables and file storage.
+      - key: PYRONITES_URL
+        sync: false
+      - key: PYRONITES_KEY
+        sync: false
+      - key: PYRONITES_PROJECT_ID
+        value: tazakhabar
+      # Session cookie signing secret (any long random string).
+      - key: AUTH_SESSION_SECRET
+        sync: false
+      - key: AUTH_COOKIE_SECURE
         value: "true"
-      - key: KEEPALIVE_INTERVAL_SEC
-        value: "840"
+      - key: AUTH_COOKIE_SAMESITE
+        value: "none"
+      # Exact frontend origin, no wildcards.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Guards the write endpoints (scrape trigger, CSV load, backfill).
+      - key: ADMIN_TOKEN
+        sync: false
+      # LLM keys for the interactive endpoints (resume analysis, career bot).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

@@ -1,0 +1,7 @@
+npm notice run tazakhabar@0.1.0 npx
+npm notice run next start -p 4400
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:4400
+
+ ✓ Starting...
+ ✓ Ready in 319ms

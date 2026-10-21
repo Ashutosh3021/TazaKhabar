@@ -1,12 +1,9 @@
+# Local development dependencies for the TazaKhabar backend.
+# The API talks to Pyronites over HTTP, so there is no database driver here.
 fastapi==0.115.6
 uvicorn[standard]==0.27.1
 hypercorn==0.16.0
 httpx>=0.28.1,<1.0.0
-aiosqlite==0.19.0
-asyncpg>=0.29.0
-sqlalchemy[asyncio]==2.0.25
-alembic==1.13.1
-apscheduler==3.10.4
 beautifulsoup4==4.12.3
 lxml==5.1.0
 python-dotenv==1.0.1
@@ -19,4 +16,5 @@ openrouter==0.7.11
 groq==0.14.0
 sentence-transformers==5.2.3
 pymupdf==1.26.7
-scikit-learn==1.4.0
+scikit-learn==1.4.1
+numpy>=1.26,<3

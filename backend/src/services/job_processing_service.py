@@ -4,10 +4,7 @@ Job processing service for cleaning and normalizing scraped job data using LLM.
 import logging
 from datetime import datetime
 
-from sqlalchemy import select, update
-
-from src.db.database import async_session
-from src.db.models import Job
+from src.db import repos
 from src.services.llm_service import _call_llm, generate_with_retry
 
 logger = logging.getLogger(__name__)
@@ -48,95 +45,77 @@ JSON:"""
 
 async def process_job_with_llm(job_id: str) -> dict | None:
     """
-    Process a single job with LLM to clean/normalize data.
-    Returns the cleaned data or None if processing fails.
+    Process a single job with the LLM to clean and normalize the data.
+    Returns the cleaned data, or None when processing fails.
     """
-    async with async_session() as session:
-        stmt = select(Job).where(Job.id == job_id)
-        result = await session.execute(stmt)
-        job = result.scalar_one_or_none()
-        
-        if not job:
-            logger.warning(f"Job not found: {job_id}")
+    job = await repos.job_by_id(job_id)
+    if not job:
+        logger.warning(f"Job not found: {job_id}")
+        return None
+
+    if job.get("processed"):
+        logger.debug(f"Job already processed: {job_id}")
+        return {"title": job.get("cleaned_title"), "company": job.get("cleaned_company")}
+
+    raw_title = job.get("title") or ""
+    raw_company = job.get("company") or ""
+    raw_location = job.get("location") or ""
+
+    raw_text = f"Title: {raw_title}\nCompany: {raw_company}\nLocation: {raw_location}"
+    if job.get("description"):
+        raw_text = f"{raw_text}\n\nDescription: {job['description']}"
+
+    prompt = JOB_CLEANING_PROMPT.format(
+        raw_title=raw_title,
+        raw_company=raw_company,
+        raw_location=raw_location,
+        raw_text=raw_text,
+    )
+
+    try:
+        response = await generate_with_retry(prompt, JOB_CLEANING_SYSTEM)
+
+        import json
+        import re
+
+        json_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", response, re.DOTALL)
+        if not json_match:
+            logger.warning(f"Could not parse JSON from LLM response for job {job_id}")
             return None
-        
-        if job.processed:
-            logger.debug(f"Job already processed: {job_id}")
-            return {"title": job.cleaned_title, "company": job.cleaned_company}
-        
-        raw_title = job.title or ""
-        raw_company = job.company or ""
-        raw_location = job.location or ""
-        
-        # Get raw text from original scraped text (use title + location as fallback)
-        raw_text = f"Title: {raw_title}\nCompany: {raw_company}\nLocation: {raw_location}"
-        
-        # Include original description if available
-        if hasattr(job, 'description') and job.description:
-            raw_text = f"{raw_text}\n\nDescription: {job.description}"
-        
-        prompt = JOB_CLEANING_PROMPT.format(
-            raw_title=raw_title,
-            raw_company=raw_company,
-            raw_location=raw_location,
-            raw_text=raw_text,
+
+        cleaned = json.loads(json_match.group(0))
+
+        updates: dict = {
+            "cleaned_title": cleaned.get("title", raw_title),
+            "cleaned_company": cleaned.get("company", raw_company),
+            "processed": True,
+            "scraped_at": datetime.utcnow().isoformat(),
+        }
+
+        role = cleaned.get("role", "")
+        if role:
+            updates["role"] = _normalize_role(role)
+        if cleaned.get("tags"):
+            updates["tags"] = cleaned["tags"]
+        if cleaned.get("location_type") in ["Remote", "Onsite", "Hybrid"]:
+            updates["location"] = cleaned["location_type"]
+        if cleaned.get("job_description"):
+            updates["description"] = cleaned["job_description"][:1000]
+        if cleaned.get("email_available"):
+            updates["email_contact"] = "detected"
+        if cleaned.get("apply_link") and not job.get("apply_link"):
+            updates["apply_link"] = "detected"
+
+        await repos.upsert_job(job_id, updates)
+
+        logger.info(
+            f"Processed job {job_id}: {cleaned.get('title')} @ {cleaned.get('company')} | Role: {role}"
         )
-        
-        try:
-            response = await generate_with_retry(prompt, JOB_CLEANING_SYSTEM)
-            
-            # Parse JSON from response
-            import json
-            import re
-            
-            # Extract JSON from response - handle nested objects
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
-            if json_match:
-                cleaned = json.loads(json_match.group(0))
-                
-                # Update job in database
-                job.cleaned_title = cleaned.get("title", raw_title)
-                job.cleaned_company = cleaned.get("company", raw_company)
-                
-                # Handle role field - map to standardized roles
-                role = cleaned.get("role", "")
-                if role:
-                    job.role = _normalize_role(role)
-                
-                job.processed = True
-                
-                # Update tags if LLM provided better ones
-                if cleaned.get("tags"):
-                    job.tags = cleaned.get("tags")
-                
-                # Update location_type based on LLM output
-                if cleaned.get("location_type"):
-                    loc_type = cleaned.get("location_type")
-                    if loc_type in ["Remote", "Onsite", "Hybrid"]:
-                        job.location = loc_type
-                
-                # Store cleaned job description
-                if cleaned.get("job_description"):
-                    job.description = cleaned.get("job_description")[:1000]  # Limit length
-                
-                # Store email/apply availability
-                if cleaned.get("email_available"):
-                    job.email_contact = "detected"
-                if cleaned.get("apply_link"):
-                    job.apply_link = job.apply_link or "detected"
-                
-                job.scraped_at = datetime.utcnow()
-                await session.commit()
-                
-                logger.info(f"Processed job {job_id}: {cleaned.get('title')} @ {cleaned.get('company')} | Role: {role}")
-                return cleaned
-            else:
-                logger.warning(f"Could not parse JSON from LLM response for job {job_id}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Failed to process job {job_id}: {e}")
-            return None
+        return cleaned
+
+    except Exception as e:
+        logger.error(f"Failed to process job {job_id}: {e}")
+        return None
 
 
 def _normalize_role(role: str) -> str:
@@ -208,25 +187,20 @@ def _normalize_role(role: str) -> str:
 
 async def process_all_unprocessed_jobs(limit: int = 50) -> dict:
     """
-    Process all unprocessed jobs in the database.
-    Runs in background and processes jobs in batches.
+    Process all unprocessed jobs in the store, in batches.
     """
     logger.info(f"Starting job processing (limit: {limit})")
-    
-    async with async_session() as session:
-        stmt = select(Job).where(Job.processed == False).limit(limit)
-        result = await session.execute(stmt)
-        jobs = result.scalars().all()
-    
+
+    jobs = await repos.unprocessed_jobs(limit)
     success_count = 0
     error_count = 0
-    
+
     for job in jobs:
-        result = await process_job_with_llm(job.id)
+        result = await process_job_with_llm(job["id"])
         if result:
             success_count += 1
         else:
             error_count += 1
-    
+
     logger.info(f"Job processing complete: {success_count} succeeded, {error_count} failed")
     return {"success": success_count, "errors": error_count, "total": len(jobs)}

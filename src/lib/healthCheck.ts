@@ -1,11 +1,10 @@
 /**
- * Supabase Health Check Utility
- * 
- * Fetches and logs Supabase connection status to the browser console
- * Call this on page load to verify Supabase connectivity
+ * Pyronites Health Check Utility
+ *
+ * Fetches and logs the Pyronites connection status to the browser console.
  */
 
-export interface SupabaseHealthStatus {
+export interface PyronitesHealthStatus {
   storage: {
     configured: boolean;
     connected: boolean;
@@ -22,10 +21,17 @@ export interface SupabaseHealthStatus {
 
 export interface SystemHealthStatus {
   status: string;
-  supabase: SupabaseHealthStatus;
-  database: {
+  pyronites: {
     configured: boolean;
-    url_type: string;
+    connected: boolean;
+    url: string;
+    project_id: string;
+    tables: number;
+    error?: string;
+  };
+  database: {
+    type: string;
+    project_id: string;
   };
   timestamp: string;
 }
@@ -44,23 +50,23 @@ function getApiBase(): string {
 }
 
 /**
- * Fetch Supabase health status from the backend
+ * Fetch Pyronites health status from the backend
  */
-export async function fetchSupabaseHealth(): Promise<SupabaseHealthStatus | null> {
+export async function fetchPyronitesHealth(): Promise<PyronitesHealthStatus | null> {
   try {
     const apiBase = getApiBase();
-    const url = `${apiBase}/health/supabase`;
-    console.debug('[TazaKhabar] Fetching Supabase health from:', url);
+    const url = `${apiBase}/health/pyronites`;
+    console.debug('[TazaKhabar] Fetching Pyronites health from:', url);
     const response = await fetch(url);
     if (!response.ok) {
       const error = `Health check failed: ${response.status} ${response.statusText}. URL: ${url}`;
       console.error('[TazaKhabar]', error);
-      console.warn('[TazaKhabar] Make sure NEXT_PUBLIC_API_URL is set correctly in Vercel (should be your Railway backend URL)');
+      console.warn('[TazaKhabar] Make sure NEXT_PUBLIC_API_URL is set correctly in Vercel (should be your Render backend URL)');
       return null;
     }
     return await response.json();
   } catch (error) {
-    console.error('[TazaKhabar] Failed to fetch Supabase health:', error);
+    console.error('[TazaKhabar] Failed to fetch Pyronites health:', error);
     console.warn('[TazaKhabar] Make sure backend is running and NEXT_PUBLIC_API_URL is configured');
     return null;
   }
@@ -90,9 +96,9 @@ export async function fetchSystemHealth(): Promise<SystemHealthStatus | null> {
 }
 
 /**
- * Format and log Supabase health status to console with colors
+ * Format and log Pyronites health status to console with colors
  */
-export function logSupabaseHealth(health: SupabaseHealthStatus): void {
+export function logPyronitesHealth(health: PyronitesHealthStatus): void {
   const timestamp = new Date(health.timestamp).toLocaleTimeString();
   
   // Color coding
@@ -114,7 +120,7 @@ export function logSupabaseHealth(health: SupabaseHealthStatus): void {
   }[health.overall_status] || '❓';
 
   console.log(
-    `%c${statusEmoji} TazaKhabar Supabase Status [${timestamp}]`,
+    `%c${statusEmoji} TazaKhabar Pyronites Status [${timestamp}]`,
     statusColor
   );
 
@@ -155,31 +161,31 @@ export function logSystemHealth(health: SystemHealthStatus): void {
   );
 
   console.log(`%c  Status: ${health.status.toUpperCase()}`, healthColor);
-  
-  // Supabase info
-  const supabaseEmoji = health.supabase.overall_status === 'connected' ? '✓' : '✗';
-  const supabaseColor = health.supabase.overall_status === 'connected' ? 'color: #22c55e;' : 'color: #ef4444;';
+
+  // Pyronites info
+  const backendEmoji = health.pyronites.connected ? '✓' : '✗';
+  const backendColor = health.pyronites.connected ? 'color: #22c55e;' : 'color: #ef4444;';
   console.log(
-    `%c  Supabase: ${supabaseEmoji} ${health.supabase.overall_status.toUpperCase()}`,
-    supabaseColor
+    `%c  Pyronites: ${backendEmoji} ${health.pyronites.connected ? 'CONNECTED' : 'DISCONNECTED'}`,
+    backendColor
   );
 
   // Database info
   const dbColor = 'color: #3b82f6;';
   console.log(
-    `%c  Database: ${health.database.url_type.toUpperCase()}`,
+    `%c  Database: ${health.database.type.toUpperCase()} (${health.database.project_id})`,
     dbColor
   );
 }
 
 /**
- * Check Supabase health and log to console (all-in-one function)
+ * Check Pyronites health and log to console (all-in-one function)
  */
-export async function checkSupabaseAndLog(): Promise<void> {
-  console.log('%c🔍 Checking TazaKhabar Supabase connection...', 'color: #6366f1; font-weight: bold;');
-  const health = await fetchSupabaseHealth();
+export async function checkPyronitesAndLog(): Promise<void> {
+  console.log('%c🔍 Checking TazaKhabar Pyronites connection...', 'color: #6366f1; font-weight: bold;');
+  const health = await fetchPyronitesHealth();
   if (health) {
-    logSupabaseHealth(health);
+    logPyronitesHealth(health);
   }
 }
 
@@ -191,10 +197,6 @@ export async function checkSystemHealthAndLog(): Promise<void> {
   const health = await fetchSystemHealth();
   if (health) {
     logSystemHealth(health);
-    
-    // Also log Supabase details
-    console.log('%c--- Supabase Details ---', 'color: #8b5cf6; font-weight: bold;');
-    logSupabaseHealth(health.supabase);
   }
 }
 
@@ -218,14 +220,14 @@ export function showApiConfig(): void {
   console.log(`  Status: ${hasEnvVar ? '✓ Set' : (isProduction ? '✗ NOT SET (will fail in production)' : '⚠️ Using local fallback')}`);
   
   console.log('%cTesting Connection:', 'font-weight: bold;');
-  console.log(`  Try calling: tazaCheckSupabase()`);
-  console.log(`  Or manually: fetch('${apiBase}/health/supabase').then(r => console.log(r.status, r.url))`);
+  console.log(`  Try calling: tazaCheckPyronites()`);
+  console.log(`  Or manually: fetch('${apiBase}/health/pyronites').then(r => console.log(r.status, r.url))`);
   
   if (!hasEnvVar && isProduction) {
     console.warn(
       '%c⚠️ WARNING: NEXT_PUBLIC_API_URL not set in production!\n' +
       'The health check will fail. Set this environment variable in Vercel:\n' +
-      '  NEXT_PUBLIC_API_URL = https://your-railway-backend.up.railway.app',
+      '  NEXT_PUBLIC_API_URL = https://your-tazakhabar-backend.onrender.com',
       'color: #ef4444; font-weight: bold; font-size: 12px;'
     );
   }
@@ -235,10 +237,10 @@ export function showApiConfig(): void {
 
 /**
  * Add a global function to check health from browser console
- * Usage: window.tazaCheckHealth() or window.tazaCheckSupabase()
+ * Usage: window.tazaCheckHealth() or window.tazaCheckPyronites()
  */
 if (typeof window !== 'undefined') {
-  (window as any).tazaCheckSupabase = checkSupabaseAndLog;
+  (window as any).tazaCheckPyronites = checkPyronitesAndLog;
   (window as any).tazaCheckHealth = checkSystemHealthAndLog;
   (window as any).tazaShowConfig = showApiConfig;
   
@@ -246,17 +248,17 @@ if (typeof window !== 'undefined') {
     '%c💡 TazaKhabar Health Commands Available:',
     'color: #10b981; font-weight: bold;'
   );
-  console.log('   👉 Type "tazaCheckSupabase()" to check Supabase status');
+  console.log('   👉 Type "tazaCheckPyronites()" to check Pyronites status');
   console.log('   👉 Type "tazaCheckHealth()" to check full system health');
   console.log('   👉 Type "tazaShowConfig()" to show API configuration');
 }
 
 export default {
-  fetchSupabaseHealth,
+  fetchPyronitesHealth,
   fetchSystemHealth,
-  logSupabaseHealth,
+  logPyronitesHealth,
   logSystemHealth,
-  checkSupabaseAndLog,
+  checkPyronitesAndLog,
   checkSystemHealthAndLog,
   showApiConfig,
 };

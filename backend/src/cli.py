@@ -1,185 +1,149 @@
 """
 CLI utilities for TazaKhabar backend.
 
-Provides command-line tools for health checks, diagnostics, and maintenance tasks.
+Commands:
+    python -m src.cli check-pyronites   # check the Pyronites connection
+    python -m src.cli check-all         # check every external dependency
+    python -m src.cli ci-run            # run the scrapers + trends (GitHub Actions)
 """
 import asyncio
 import sys
 import argparse
 from datetime import datetime
 
-from src.db.supabase import supabase_client
 from src.config import settings
 
 
-async def check_supabase():
-    """Check Supabase connection status and report details."""
+async def check_pyronites() -> int:
+    """Check the Pyronites connection and report the project state."""
     print("\n" + "=" * 70)
-    print("SUPABASE CONNECTION CHECK")
+    print("PYRONITES CONNECTION CHECK")
     print("=" * 70)
     print(f"Check timestamp: {datetime.now().isoformat()}\n")
 
     try:
-        connection_status = await supabase_client.check_supabase_connection()
+        from src.db.pyro import get_pyro
 
-        # Storage Section
-        print("📦 SUPABASE STORAGE")
-        print("-" * 70)
-        if connection_status['storage']['configured']:
-            print(f"  Configuration: ✓ Configured")
-            print(f"  URL: {settings.SUPABASE_URL}")
-            print(f"  Bucket: {settings.SUPABASE_STORAGE_BUCKET}")
-            if connection_status['storage']['connected']:
-                print(f"  Connection: ✓ Connected")
-            else:
-                error_msg = connection_status['storage']['error'] or "Unknown error"
-                print(f"  Connection: ✗ Failed")
-                print(f"  Error: {error_msg}")
-        else:
-            print(f"  Configuration: ✗ Not configured")
-            print("  Missing environment variables:")
-            if not settings.SUPABASE_URL:
-                print("    - SUPABASE_URL")
-            if not settings.SUPABASE_SERVICE_ROLE_KEY:
-                print("    - SUPABASE_SERVICE_ROLE_KEY")
-            if not settings.SUPABASE_STORAGE_BUCKET:
-                print("    - SUPABASE_STORAGE_BUCKET")
-        print()
+        client = get_pyro()
+        healthy = await client.healthy()
+        print("  URL:      ", settings.PYRONITES_URL)
+        print("  Project:  ", settings.PYRONITES_PROJECT_ID)
+        print("  Health:   ", "ok" if healthy else "failed")
 
-        # Email Section
-        print("📧 SUPABASE EMAIL (SMTP)")
-        print("-" * 70)
-        if connection_status['email']['configured']:
-            print(f"  Configuration: ✓ Configured")
-            print(f"  SMTP Host: {settings.EMAIL_SMTP_HOST}")
-            print(f"  SMTP Port: {settings.EMAIL_SMTP_PORT}")
-            print(f"  SMTP User: {settings.EMAIL_SMTP_USER}")
-            print(f"  From Address: {settings.SUPABASE_EMAIL_FROM}")
-            if connection_status['email']['connected']:
-                print(f"  Connection: ✓ Connected")
-            else:
-                error_msg = connection_status['email']['error'] or "Unknown error"
-                print(f"  Connection: ✗ Failed")
-                print(f"  Error: {error_msg}")
-        else:
-            print(f"  Configuration: ✗ Not configured")
-            print("  Missing environment variables:")
-            if not settings.EMAIL_SMTP_HOST:
-                print("    - EMAIL_SMTP_HOST")
-            if not settings.EMAIL_SMTP_USER:
-                print("    - EMAIL_SMTP_USER")
-            if not settings.EMAIL_SMTP_PASSWORD:
-                print("    - EMAIL_SMTP_PASSWORD")
-            if not settings.SUPABASE_EMAIL_FROM:
-                print("    - SUPABASE_EMAIL_FROM")
-        print()
+        tables = await client.table_names()
+        print(f"  Tables:    {len(tables)}")
+        for table in tables:
+            print(f"    - {table}")
 
-        # Overall Status
-        print("🔍 OVERALL STATUS")
-        print("-" * 70)
-        status_map = {
-            'connected': ('✓', '🟢 CONNECTED', 'All Supabase services are connected'),
-            'partial': ('⚠', '🟡 PARTIAL', 'Some Supabase services are unavailable'),
-            'disconnected': ('✗', '🔴 DISCONNECTED', 'Supabase services are not connected'),
-            'not_configured': ('⚠', '🟡 NOT CONFIGURED', 'Supabase is not configured')
-        }
-        
-        symbol, status_label, description = status_map.get(
-            connection_status['overall_status'],
-            ('?', '❓ UNKNOWN', 'Unknown status')
-        )
-        
-        print(f"  {status_label}")
-        print(f"  {description}")
-        print()
-
-        print("=" * 70)
-        return 0 if connection_status['overall_status'] == 'connected' else 1
+        print("\n" + "=" * 70)
+        return 0 if healthy else 1
 
     except Exception as e:
-        print(f"❌ ERROR: {e}\n")
+        print(f"ERROR: {e}\n")
         print("=" * 70)
         return 1
 
 
-async def check_database():
-    """Check database connection status."""
+async def check_llm() -> int:
+    """Report whether the LLM keys are configured."""
     print("\n" + "=" * 70)
-    print("DATABASE CONNECTION CHECK")
+    print("LLM CONFIGURATION")
     print("=" * 70)
-    print(f"Check timestamp: {datetime.now().isoformat()}\n")
-
-    try:
-        from sqlalchemy import text
-        from src.db.database import engine
-        
-        print("📊 DATABASE CONFIGURATION")
-        print("-" * 70)
-        db_url = settings.DATABASE_URL
-        # Mask sensitive parts of the URL
-        if "@" in db_url:
-            db_url_display = db_url.split("@")[1]
-        else:
-            db_url_display = db_url
-        
-        print(f"  Database URL: {db_url_display}")
-        print()
-
-        print("🔍 CONNECTION STATUS")
-        print("-" * 70)
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
-            print("  ✓ Connected")
-            print("  ✓ Connection pool is operational")
-            print()
-            print("=" * 70)
-            return 0
-        except Exception as e:
-            print(f"  ✗ Connection failed: {e}")
-            print()
-            print("=" * 70)
-            return 1
-
-    except Exception as e:
-        print(f"❌ ERROR: {e}\n")
-        print("=" * 70)
-        return 1
+    groq = bool(settings.GROQ_API_KEY and settings.GROQ_API_KEY != "your_key_here")
+    openrouter = bool(
+        settings.OPENROUTER_API_KEY and settings.OPENROUTER_API_KEY != "your_key_here"
+    )
+    print(f"  Groq:       {'configured' if groq else 'not configured'}")
+    print(f"  OpenRouter: {'configured' if openrouter else 'not configured'}")
+    print("=" * 70)
+    return 0 if (groq or openrouter) else 1
 
 
-async def main():
+async def ci_run() -> int:
+    """
+    Scrape HN and summarize the new items. This is the GitHub Actions entrypoint
+    for the 2-hour scrape cycle.
+    """
+    print("\n" + "=" * 70)
+    print("SCRAPE RUN")
+    print("=" * 70)
+
+    from src.services.scraper_runner import run_all_scrapers_now
+
+    results = await run_all_scrapers_now()
+    for name, outcome in results.items():
+        print(f"  {name:16} {outcome}")
+
+    failed = [name for name, outcome in results.items() if not outcome.startswith("ok")]
+
+    print("=" * 70)
+    return 1 if failed else 0
+
+
+async def ci_trends() -> int:
+    """Recount the weekly keywords and write the market observation (daily)."""
+    print("\n" + "=" * 70)
+    print("TRENDS + OBSERVATION")
+    print("=" * 70)
+
+    from src.services.scraper_runner import compute_trends_and_observation
+
+    observation = await compute_trends_and_observation()
+    if observation:
+        print(f"  observation: {observation[:120]}...")
+
+    print("=" * 70)
+    return 0
+
+
+async def ci_embeddings() -> int:
+    """Backfill the content embeddings (daily, needs sentence-transformers)."""
+    print("\n" + "=" * 70)
+    print("EMBEDDING BACKFILL")
+    print("=" * 70)
+
+    from src.services.embedding_service import backfill_missing_embeddings
+
+    result = await backfill_missing_embeddings()
+    print(f"  {result}")
+
+    print("=" * 70)
+    return 0
+
+
+async def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="TazaKhabar Backend Diagnostics",
+        description="TazaKhabar Backend CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python -m src.cli check-supabase    # Check Supabase connection
-  python -m src.cli check-database    # Check database connection
-  python -m src.cli check-all         # Check all connections
-        """
     )
-
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    subparsers.add_parser('check-supabase', help='Check Supabase connection')
-    subparsers.add_parser('check-database', help='Check database connection')
-    subparsers.add_parser('check-all', help='Check all connections')
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers.add_parser("check-pyronites", help="Check the Pyronites connection")
+    subparsers.add_parser("check-llm", help="Check the LLM key configuration")
+    subparsers.add_parser("check-all", help="Check every external dependency")
+    subparsers.add_parser("ci-run", help="Run the scrapers (every 2 hours)")
+    subparsers.add_parser("ci-trends", help="Recount trends and write the observation (daily)")
+    subparsers.add_parser("ci-embeddings", help="Backfill the content embeddings (daily)")
 
     args = parser.parse_args()
 
-    if args.command == 'check-supabase':
-        return await check_supabase()
-    elif args.command == 'check-database':
-        return await check_database()
-    elif args.command == 'check-all':
-        supabase_result = await check_supabase()
-        db_result = await check_database()
-        return max(supabase_result, db_result)
-    else:
-        parser.print_help()
-        return 1
+    if args.command == "check-pyronites":
+        return await check_pyronites()
+    if args.command == "check-llm":
+        return await check_llm()
+    if args.command == "check-all":
+        return max(await check_pyronites(), await check_llm())
+    if args.command == "ci-run":
+        return await ci_run()
+    if args.command == "ci-trends":
+        return await ci_trends()
+    if args.command == "ci-embeddings":
+        return await ci_embeddings()
+
+    parser.print_help()
+    return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     exit_code = asyncio.run(main())
     sys.exit(exit_code)

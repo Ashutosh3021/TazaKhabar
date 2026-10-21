@@ -4,8 +4,6 @@ Fetches top HN stories with score > 100 and saves to news table.
 """
 import logging
 
-from ..db.database import async_session
-from ..db.models import Report
 from .base_scraper import BaseScraper
 from .client import HNClient
 
@@ -34,19 +32,7 @@ class TopStoriesScraper(BaseScraper):
         print("\n" + "-" * 50)
         print(">>> [TOP-STORIES] Starting Top Stories scraper run")
         
-        # Create report entry
-        async with async_session() as session:
-            report = Report(
-                version="2",
-                items_collected=0,
-                new_items=0,
-                status="running",
-                scraper_name="top_stories",
-            )
-            session.add(report)
-            await session.flush()
-            report_id = report.id
-            await session.commit()  # Commit so other sessions can see this report
+        await self.record_run("top_stories", "running")
         
         try:
             # Fetch Top Stories IDs
@@ -81,19 +67,7 @@ class TopStoriesScraper(BaseScraper):
             total, new_count = await self.save_news(filtered_stories, "top_story")
             print(f">>> [TOP-STORIES] SUCCESS: {new_count} NEW items saved!")
             
-            # Update report
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.items_collected = total
-                    report.new_items = new_count
-                    report.status = "completed"
-                    await session.commit()
-                else:
-                    logger.warning(f"Could not find report {report_id} to update")
+            await self.record_run("top_stories", "completed", total, new_count)
             
             print(">>> [TOP-STORIES] Scraper run completed successfully")
             print("-" * 50 + "\n")
@@ -106,13 +80,6 @@ class TopStoriesScraper(BaseScraper):
             print(f">>> [TOP-STORIES] TRACE: {traceback.format_exc()}")
             logger.error(f"Top Stories scraper failed: {e}")
             
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.status = "failed"
-                    await session.commit()
+            await self.record_run("top_stories", "failed")
             
             return {"collected": 0, "new": 0}

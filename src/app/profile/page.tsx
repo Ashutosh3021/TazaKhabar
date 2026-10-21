@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "@/components/Icon";
 import AppShell from "@/components/AppShell";
 import { useRouter } from "next/navigation";
 import { useTaza } from "@/components/TazaContext";
@@ -47,9 +48,13 @@ export default function ProfilePage() {
         const profile = await fetchProfile();
         if (cancelled) return;
         if (profile.roles?.length && !userProfile.roles?.length) {
-          setUserProfile({ ...userProfile, roles: profile.roles, experienceLevel: profile.experience_level || userProfile.experienceLevel });
+          setUserProfile({
+            ...userProfile,
+            roles: profile.roles,
+            experienceLevel: profile.experience_level || userProfile.experienceLevel,
+          });
         }
-        if (profile.resume_text || profile.ats_score !== null) {
+        if (profile.resume_text_length || profile.ats_score !== null) {
           setResumeUploaded(true);
         }
         if (profile.ats_score !== null && profile.ats_score !== undefined) {
@@ -74,7 +79,9 @@ export default function ProfilePage() {
       }
     }
     loadProfile();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -101,58 +108,69 @@ export default function ProfilePage() {
     return () => window.clearInterval(id);
   }, [rateLimitedUntil]);
 
-  const handleAnalyze = useCallback(async (file: File) => {
-    if (cooldownDays !== null) {
-      setAnalyzeError(`Re-analysis available in ${cooldownDays} days`);
-      return;
-    }
-    setIsAnalyzing(true);
-    setAnalyzeError(null);
-    try {
-      const result = await analyseResume(file);
-      setAtsResult({
-        ats_score: result.ats_score,
-        critical_issues: result.critical_issues,
-        suggested_additions: result.suggested_additions,
-        missing_keywords: result.missing_keywords,
-      });
-      setLastAnalysisAt(new Date().toISOString());
-      setCooldownDays(30);
-
-      // Refresh server-side profile so stored ATS fields are synced
-      try {
-        const profile = await fetchProfile();
-        setUserProfile({
-          ...userProfile,
-          roles: profile.roles || userProfile.roles,
-          experienceLevel: profile.experience_level || userProfile.experienceLevel,
-          email: profile.email || userProfile.email,
-        });
-      } catch (e) {
-        // non-fatal: keep local ATS result
+  const handleAnalyze = useCallback(
+    async (file: File) => {
+      if (cooldownDays !== null) {
+        setAnalyzeError(`Re-analysis available in ${cooldownDays} days`);
+        return;
       }
-    } catch (err: unknown) {
-      const error = err as { retry_after?: number; code?: string; message?: string; days_remaining?: number };
-      if (error.retry_after) setRateLimitedUntil(Date.now() + error.retry_after * 1000);
-      if (error.code === "REANALYSIS_COOLDOWN") setCooldownDays(error.days_remaining ?? null);
-      setAnalyzeError(error.message || "Analysis failed");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [cooldownDays, userProfile, setUserProfile]);
+      setIsAnalyzing(true);
+      setAnalyzeError(null);
+      try {
+        const result = await analyseResume(file);
+        setAtsResult({
+          ats_score: result.ats_score,
+          critical_issues: result.critical_issues,
+          suggested_additions: result.suggested_additions,
+          missing_keywords: result.missing_keywords,
+        });
+        setLastAnalysisAt(new Date().toISOString());
+        setCooldownDays(30);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64 = ev.target?.result as string;
-      localStorage.setItem("taza_resume_pdf", base64);
-      setResumeUploaded(true);
-      await handleAnalyze(file);
-    };
-    reader.readAsDataURL(file);
-  }, [handleAnalyze, setResumeUploaded]);
+        // Refresh server-side profile so stored ATS fields are synced
+        try {
+          const profile = await fetchProfile();
+          setUserProfile({
+            ...userProfile,
+            roles: profile.roles || userProfile.roles,
+            experienceLevel: profile.experience_level || userProfile.experienceLevel,
+            email: profile.email || userProfile.email,
+          });
+        } catch (e) {
+          // non-fatal: keep local ATS result
+        }
+      } catch (err: unknown) {
+        const error = err as {
+          retry_after?: number;
+          code?: string;
+          message?: string;
+          days_remaining?: number;
+        };
+        if (error.retry_after) setRateLimitedUntil(Date.now() + error.retry_after * 1000);
+        if (error.code === "REANALYSIS_COOLDOWN") setCooldownDays(error.days_remaining ?? null);
+        setAnalyzeError(error.message || "Analysis failed");
+      } finally {
+        setIsAnalyzing(false);
+      }
+    },
+    [cooldownDays, userProfile, setUserProfile],
+  );
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = ev.target?.result as string;
+        localStorage.setItem("taza_resume_pdf", base64);
+        setResumeUploaded(true);
+        await handleAnalyze(file);
+      };
+      reader.readAsDataURL(file);
+    },
+    [handleAnalyze, setResumeUploaded],
+  );
 
   const handleAnalyzeStoredResume = useCallback(async () => {
     const savedResume = localStorage.getItem("taza_resume_pdf");
@@ -191,10 +209,13 @@ export default function ProfilePage() {
     return suggested.filter((s) => !missing.has(s.toLowerCase()));
   }, [atsResult]);
 
-  const remainingSeconds = rateLimitedUntil ? Math.max(0, Math.ceil((rateLimitedUntil - nowMs) / 1000)) : 0;
+  const remainingSeconds = rateLimitedUntil
+    ? Math.max(0, Math.ceil((rateLimitedUntil - nowMs) / 1000))
+    : 0;
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
-  const countdownLabel = remainingSeconds > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : "0:00";
+  const countdownLabel =
+    remainingSeconds > 0 ? `${minutes}:${String(seconds).padStart(2, "0")}` : "0:00";
   const isRateLimited = Boolean(rateLimitedUntil && rateLimitedUntil > nowMs);
 
   const handleReanalyze = useCallback(() => {
@@ -205,27 +226,37 @@ export default function ProfilePage() {
     void handleAnalyzeStoredResume();
   }, [resumeUploaded, handleAnalyzeStoredResume]);
 
-  const exp = EXPERIENCE_MAP[userProfile.experienceLevel] ?? { label: "Senior+", roman: "IV" as const };
+  const exp =
+    EXPERIENCE_MAP[userProfile.experienceLevel] ?? { label: "Senior+", roman: "IV" as const };
 
   return (
     <AppShell>
       <div className="space-y-10">
-        <header className="pt-6">
-          <h1 className="font-serif text-4xl md:text-6xl font-black leading-tight">
-            Your <span className="text-primary italic font-black">Profile.</span>
+        <header>
+          <p className="mono-label text-primary">05 / Operator panel</p>
+          <h1 className="display mt-3 text-[clamp(2rem,1.3rem+2.8vw,3.25rem)]" data-split="lines" data-intro>
+            Your <span className="accent">profile.</span>
           </h1>
-          <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.2em] mt-4">
-            Manage your intelligence parameters.
-          </p>
+          <p className="mono-label mt-4 text-dim-text">Manage your intelligence parameters</p>
         </header>
 
         {/* Desktop layout */}
-        <div className="hidden md:grid md:grid-cols-12 gap-12">
-          <aside className="md:col-span-4 flex flex-col gap-12">
-            <AccountCard email={userProfile.email} onSignOut={() => { resetAll(); router.push("/"); }} />
-            <ResumeCard atsScore={atsScore} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
+        <div className="hidden md:grid md:grid-cols-12 gap-8">
+          <aside className="md:col-span-4 flex flex-col gap-8">
+            <AccountCard
+              email={userProfile.email}
+              onSignOut={() => {
+                resetAll();
+                router.push("/");
+              }}
+            />
+            <ResumeCard
+              atsScore={atsScore}
+              onFileChange={handleFileChange}
+              fileInputRef={fileInputRef}
+            />
           </aside>
-          <main className="md:col-span-8 flex flex-col gap-12">
+          <main className="md:col-span-8 flex flex-col gap-8">
             <RolesCard roles={userProfile.roles} />
             <ExperienceCard label={`${exp.label} / ${exp.roman}`} />
             <ResumeIntelligenceSection
@@ -240,38 +271,53 @@ export default function ProfilePage() {
               onAnalyze={handleReanalyze}
             />
             <OperationalPreferencesSection hasAccount={hasAccount} />
-            <TerminalCard atsScore={atsScore} atsResult={atsResult} trendingSkills={trendingSkills} />
+            <TerminalCard
+              atsScore={atsScore}
+              atsResult={atsResult}
+              trendingSkills={trendingSkills}
+            />
           </main>
         </div>
 
         {/* Mobile layout */}
         <div className="md:hidden">
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Profile sections">
             {(["ACCOUNT", "ROLES", "OUTPUT"] as MobileTab[]).map((t) => (
               <button
                 key={t}
                 type="button"
+                aria-pressed={mobileTab === t}
                 onClick={() => setMobileTab(t)}
-                className={`mono-label text-[11px] uppercase tracking-[0.05em] px-5 py-3 border border-border-dark transition-colors ${mobileTab === t ? "active-tab border-border-dark text-primary" : "bg-background-dark text-dim-text hover:bg-primary/10 hover:text-neutral-beige"}`}
+                className="tab"
               >
                 {t}
               </button>
             ))}
           </div>
           {mobileTab === "ACCOUNT" && (
-            <div className="space-y-10">
-              <AccountCard email={userProfile.email} onSignOut={() => { resetAll(); router.push("/"); }} />
-              <ResumeCard atsScore={atsScore} onFileChange={handleFileChange} fileInputRef={fileInputRef} />
+            <div className="space-y-8">
+              <AccountCard
+                email={userProfile.email}
+                onSignOut={() => {
+                  resetAll();
+                  router.push("/");
+                }}
+              />
+              <ResumeCard
+                atsScore={atsScore}
+                onFileChange={handleFileChange}
+                fileInputRef={fileInputRef}
+              />
             </div>
           )}
           {mobileTab === "ROLES" && (
-            <div className="space-y-10">
+            <div className="space-y-8">
               <RolesCard roles={userProfile.roles} />
               <ExperienceCard label={`${exp.label} / ${exp.roman}`} />
             </div>
           )}
           {mobileTab === "OUTPUT" && (
-            <div className="space-y-12">
+            <div className="space-y-8">
               <ResumeIntelligenceSection
                 resumeUploaded={resumeUploaded}
                 isAnalyzing={isAnalyzing}
@@ -284,7 +330,11 @@ export default function ProfilePage() {
                 onAnalyze={handleReanalyze}
               />
               <OperationalPreferencesSection hasAccount={hasAccount} />
-              <TerminalCard atsScore={atsScore} atsResult={atsResult} trendingSkills={trendingSkills} />
+              <TerminalCard
+                atsScore={atsScore}
+                atsResult={atsResult}
+                trendingSkills={trendingSkills}
+              />
             </div>
           )}
         </div>
@@ -297,37 +347,74 @@ export default function ProfilePage() {
 // Sub-components
 // ---------------------------------------------------------------------------
 
+function SectionPlate({ n, title }: { n: string; title: string }) {
+  return (
+    <div className="scribe pb-4">
+      <span className="plate-label">
+        {n} / {title}
+      </span>
+    </div>
+  );
+}
+
 function AccountCard({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   return (
-    <section>
-      <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">01 / ACCOUNT INFO</h3>
-      <div className="space-y-4 mt-6">
+    <section className="panel p-5" data-reveal="up">
+      <SectionPlate n="01" title="Account info" />
+      <div className="space-y-4">
         <div>
-          <p className="mono-label text-[10px] text-neutral-beige/40 mb-1">ID_IDENTIFIER</p>
-          <p className="font-mono text-lg">{email || "—"}</p>
+          <p className="mono-label mb-1 text-dim-text">ID identifier</p>
+          <p className="mono-data text-[15px] break-all">{email || "not set"}</p>
         </div>
-        <button type="button" onClick={onSignOut} className="mono-label text-xs text-primary hover:line-through inline-block">[ SIGN_OUT ]</button>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="btn btn--block"
+        >
+          Sign out
+          <Icon name="logout" className="text-[16px]" aria-hidden />
+        </button>
       </div>
     </section>
   );
 }
 
-function ResumeCard({ atsScore, onFileChange, fileInputRef }: { atsScore: number | null; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; fileInputRef: React.RefObject<HTMLInputElement> }) {
+function ResumeCard({
+  atsScore,
+  onFileChange,
+  fileInputRef,
+}: {
+  atsScore: number | null;
+  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+}) {
   const hasAnalysis = atsScore !== null && atsScore > 0;
   return (
-    <section>
-      <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">04 / RESUME MANAGEMENT</h3>
-      <div className="brutalist-border p-6 border-dashed border-[#F0EDE6]/40 flex flex-col items-center justify-center text-center gap-4 mt-6">
-        <span className="material-symbols-outlined text-4xl text-[#F0EDE6]/20">upload_file</span>
+    <section className="panel p-5" data-reveal="up">
+      <SectionPlate n="04" title="Resume management" />
+      <div className="flex flex-col items-center gap-4 border border-dashed border-border-dark p-6 text-center">
+        <Icon name="upload_file" className="text-[36px] text-neutral-beige/25" aria-hidden />
         <div>
-          <p className="font-mono text-sm mb-1 uppercase">RESUME.PDF</p>
-          <p className="mono-label text-[10px] text-primary">
-            {hasAnalysis ? `ATS SCORE: ${atsScore}` : "NO RESUME UPLOADED"}
+          <p className="mono-data text-[13px]">resume.pdf</p>
+          <p className="mono-label mt-1 text-primary">
+            {hasAnalysis ? `ATS score: ${atsScore}` : "No resume uploaded"}
           </p>
         </div>
         <label className="w-full">
-          <input ref={fileInputRef} type="file" accept=".pdf,.txt" onChange={onFileChange} className="hidden" />
-          <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full brutalist-border-primary py-3 mono-label text-xs bg-primary/10 hover:bg-primary hover:text-white transition-all cursor-pointer">REPLACE_RESUME</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt"
+            onChange={onFileChange}
+            className="sr-only"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn--block"
+          >
+            Replace resume
+          </button>
         </label>
       </div>
     </section>
@@ -336,22 +423,27 @@ function ResumeCard({ atsScore, onFileChange, fileInputRef }: { atsScore: number
 
 function RolesCard({ roles }: { roles: string[] }) {
   return (
-    <section>
-      <div className="flex justify-between items-end mb-8">
-        <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">02 / YOUR ROLES</h3>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {roles.length ? roles.map((r) => (
-          <div key={r} className="brutalist-border-primary p-5 flex justify-between items-start bg-[rgba(255,45,0,0.06)]">
-            <div>
-              <p className="mono-label text-[10px] text-primary mb-2">ACTIVE_ROLE</p>
-              <h4 className="font-serif text-[18px] font-black">{r}</h4>
+    <section className="panel p-5" data-reveal="up">
+      <SectionPlate n="02" title="Your roles" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {roles.length ? (
+          roles.map((r) => (
+            <div
+              key={r}
+              className="panel panel--accent flex justify-between items-start p-4 bg-primary/[0.05]"
+            >
+              <div>
+                <p className="mono-label text-primary">Active role</p>
+                <h2 className="display mt-2 text-[18px]">{r}</h2>
+              </div>
+              <span className="lamp lamp--live mt-1" aria-hidden />
             </div>
-            <span className="material-symbols-outlined text-primary">check_circle</span>
-          </div>
-        )) : (
-          <div className="brutalist-border p-6 bg-card-dark col-span-full">
-            <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.05em]">No roles selected yet. Complete setup to personalize.</p>
+          ))
+        ) : (
+          <div className="panel col-span-full p-5">
+            <p className="mono-label text-dim-text">
+              No roles selected yet. Complete setup to personalize.
+            </p>
           </div>
         )}
       </div>
@@ -361,108 +453,156 @@ function RolesCard({ roles }: { roles: string[] }) {
 
 function ExperienceCard({ label }: { label: string }) {
   return (
-    <section>
-      <div className="flex justify-between items-end mb-8">
-        <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">03 / EXPERIENCE LEVEL</h3>
+    <section className="panel panel--accent relative overflow-hidden p-6 md:p-8" data-reveal="up">
+      <SectionPlate n="03" title="Experience level" />
+      <div className="relative z-10">
+        <p className="mono-label text-neutral-beige/60">Current tier</p>
+        <h2 className="display mt-3 text-[clamp(2.5rem,2rem+3vw,4rem)] leading-none">{label}</h2>
       </div>
-      <div className="brutalist-border-primary p-8 bg-primary/5 relative overflow-hidden">
-        <div className="relative z-10">
-          <p className="mono-label text-xs text-[#F0EDE6]/60 mb-2">CURRENT_TIER</p>
-          <h4 className="font-serif text-5xl md:text-6xl font-black italic leading-tight">{label}</h4>
-        </div>
-        <div className="absolute -right-4 -bottom-8 font-serif text-9xl font-black text-primary/5 select-none pointer-events-none hidden md:block">LVL</div>
+      <div
+        className="display pointer-events-none absolute -bottom-8 -right-4 hidden select-none text-[9rem] leading-none text-primary/[0.06] md:block"
+        aria-hidden
+      >
+        LVL
       </div>
+      <div className="tick-rule mt-6 h-[6px] opacity-70" aria-hidden />
     </section>
   );
 }
 
 function ResumeIntelligenceSection({
-  resumeUploaded, isAnalyzing, isRateLimited, countdownLabel, atsResult, trendingSkills, analyzeError, cooldownDays, onAnalyze,
+  resumeUploaded,
+  isAnalyzing,
+  isRateLimited,
+  countdownLabel,
+  atsResult,
+  trendingSkills,
+  analyzeError,
+  cooldownDays,
+  onAnalyze,
 }: {
-  resumeUploaded: boolean; isAnalyzing: boolean; isRateLimited: boolean; countdownLabel: string;
-  atsResult: AtsResult | null; trendingSkills: string[]; analyzeError: string | null;
-  cooldownDays: number | null; onAnalyze: () => void;
+  resumeUploaded: boolean;
+  isAnalyzing: boolean;
+  isRateLimited: boolean;
+  countdownLabel: string;
+  atsResult: AtsResult | null;
+  trendingSkills: string[];
+  analyzeError: string | null;
+  cooldownDays: number | null;
+  onAnalyze: () => void;
 }) {
   const showRateLimitedText = isRateLimited && resumeUploaded;
-  const buttonText = isAnalyzing ? "ANALYZING..." :
-    !resumeUploaded ? "UPLOAD RESUME TO ANALYZE" :
-    showRateLimitedText ? `TRY AGAIN IN ${countdownLabel}` :
-    "RE-ANALYZE RESUME →";
-
-  const buttonClassBase = "w-full py-4 mono-label text-[11px] font-bold uppercase tracking-[0.05em] transition-colors";
-  const buttonClass = isAnalyzing ? `${buttonClassBase} bg-[#1a1a1a] text-[#666] border-1.5 border-[#2a2a2a] cursor-wait` :
-    showRateLimitedText ? `${buttonClassBase} bg-[#1a1a1a] text-[#666] border-1.5 border-[#2a2a2a] cursor-not-allowed` :
-    `${buttonClassBase} bg-[#FF2D00] text-black border-1.5 border-[#FF2D00] cursor-pointer`;
+  const buttonText = isAnalyzing
+    ? "Analyzing"
+    : !resumeUploaded
+      ? "Upload resume to analyze"
+      : showRateLimitedText
+        ? `Try again in ${countdownLabel}`
+        : "Re-analyze resume";
 
   return (
-    <section className={`brutalist-border-primary p-0 bg-card-dark border border-border-dark ${!resumeUploaded ? "text-[#333]" : "text-neutral-beige"}`}>
-      <div className="p-6 space-y-6">
-        <div className="flex items-end justify-between gap-4">
-          <h3 className={`mono-label text-xs font-bold ${!resumeUploaded ? "text-[#333]" : "text-primary"}`}>05 / RESUME INTELLIGENCE</h3>
-          {cooldownDays !== null && (
-            <p className="mono-label text-[10px] text-dim-text">Re-analysis in {cooldownDays} days</p>
+    <section
+      className={`panel p-5 md:p-6 ${!resumeUploaded ? "text-dim-text" : "text-neutral-beige"}`}
+      data-reveal="up"
+    >
+      <div className="flex items-end justify-between gap-4">
+        <span className="plate-label text-primary">05 / Resume intelligence</span>
+        {cooldownDays !== null && (
+          <p className="mono-label text-dim-text">Re-analysis in {cooldownDays} days</p>
+        )}
+      </div>
+
+      {/* ATS bar gauge */}
+      {atsResult && (
+        <div className="mt-6 space-y-5">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="mono-label text-dim-text">ATS score</p>
+              <p className="display mt-2 text-[clamp(2.5rem,2rem+3vw,3.5rem)] leading-none text-primary">
+                {String(atsResult.ats_score).padStart(2, "0")}
+              </p>
+            </div>
+            <p className="mono-data text-[13px] text-dim-text">out of 100</p>
+          </div>
+          <div
+            className="meter"
+            role="img"
+            aria-label={`ATS score ${atsResult.ats_score} out of 100`}
+          >
+            <div
+              className={`meter__fill ${atsResult.ats_score >= 70 ? "meter__fill--ok" : ""}`}
+              style={{ width: `${atsResult.ats_score}%` }}
+            />
+          </div>
+
+          {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
+            <div>
+              <p className="mono-label text-primary">ATS gap keywords</p>
+              <p className="mono-label mt-1 text-dim-text">
+                Terms scanners expect but are not clearly on your resume.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {atsResult.missing_keywords.map((kw) => (
+                  <span key={kw} className="chip !cursor-default">
+                    {kw}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {atsResult.critical_issues.length > 0 && (
+            <div>
+              <p className="mono-label text-primary">Priority fixes</p>
+              <p className="mono-label mt-1 text-dim-text">
+                Concrete edits to improve your score.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {atsResult.critical_issues.map((issue, i) => (
+                  <li
+                    key={i}
+                    className="flex gap-2 text-[13px] leading-relaxed text-neutral-beige/90"
+                  >
+                    <span className="mono-label shrink-0 text-primary">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span>{issue}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {trendingSkills.length > 0 && (
+            <div>
+              <p className="mono-label text-primary">Trending skills to add</p>
+              <p className="mono-label mt-1 text-dim-text">
+                Hot in current job posts for your target roles.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {trendingSkills.map((skill) => (
+                  <span key={skill} className="chip is-on !cursor-default">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
         </div>
+      )}
 
-        {/* ATS Results */}
-        {atsResult && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <span className="font-serif text-5xl font-black text-primary">{atsResult.ats_score}</span>
-              <span className="mono-label text-[11px] text-dim-text uppercase">ATS SCORE</span>
-            </div>
-            {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
-              <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">ATS GAP KEYWORDS</p>
-                <p className="font-mono text-[10px] text-dim-text mb-2">Terms scanners expect but are not clearly on your resume.</p>
-                <div className="flex flex-wrap gap-2">
-                  {atsResult.missing_keywords.map((kw) => (
-                    <span key={kw} className="mono-label text-[10px] px-2 py-1 border border-[#444] text-[#ddd] uppercase tracking-[0.02em]">{kw}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {atsResult.critical_issues.length > 0 && (
-              <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">PRIORITY FIXES</p>
-                <p className="font-mono text-[10px] text-dim-text mb-2">Concrete edits to improve your score.</p>
-                <ul className="space-y-2">
-                  {atsResult.critical_issues.map((issue, i) => (
-                    <li key={i} className="font-mono text-[11px] text-neutral-beige/90 leading-relaxed flex gap-2">
-                      <span className="text-primary shrink-0">{i + 1}.</span>
-                      <span>{issue}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {trendingSkills.length > 0 && (
-              <div>
-                <p className="mono-label text-[10px] text-primary uppercase mb-2">TRENDING SKILLS TO ADD</p>
-                <p className="font-mono text-[10px] text-dim-text mb-2">Hot in current job posts for your target roles.</p>
-                <div className="flex flex-wrap gap-2">
-                  {trendingSkills.map((skill) => (
-                    <span key={skill} className="mono-label text-[10px] px-2 py-1 border border-primary/60 text-primary uppercase tracking-[0.02em]">{skill}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+      {analyzeError && <p className="mono-label mt-4 text-primary">{analyzeError}</p>}
 
-        {analyzeError && (
-          <p className="font-mono text-[11px] text-primary/80">{analyzeError}</p>
-        )}
-
-        <button
-          type="button"
-          disabled={isAnalyzing || showRateLimitedText}
-          onClick={onAnalyze}
-          className={buttonClass}
-        >
-          {buttonText}
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={isAnalyzing || showRateLimitedText}
+        onClick={onAnalyze}
+        className={`btn btn--block mt-6 ${isAnalyzing || showRateLimitedText ? "" : "btn--primary"}`}
+        style={isAnalyzing || showRateLimitedText ? { pointerEvents: "none" } : undefined}
+      >
+        {buttonText}
+        {!isAnalyzing && !showRateLimitedText ? (
+          <Icon name="arrow_forward" className="text-[16px]" aria-hidden />
+        ) : null}
+      </button>
     </section>
   );
 }
@@ -471,83 +611,142 @@ function OperationalPreferencesSection({ hasAccount }: { hasAccount: boolean }) 
   const [highDisruption, setHighDisruption] = useState(false);
   const [jobMatchAlerts, setJobMatchAlerts] = useState(false);
   return (
-    <section className="space-y-4">
-      <h3 className="mono-label text-xs font-bold text-primary underline decoration-2 underline-offset-8">06 / OPERATIONAL PREFERENCES</h3>
-      <div className="space-y-4">
-        <ToggleRow label="HIGH DISRUPTION ALERT" value={highDisruption} onChange={setHighDisruption} />
-        <div className="opacity-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-mono text-[10px] text-[#444] uppercase tracking-[0.05em] font-bold">JOB MATCH ALERTS</p>
-              <p className="font-mono text-[10px] text-[#8c8c8c] mt-2">REQUIRES ACCOUNT — COMING SOON</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[#8c8c8c] text-[18px] leading-none">🔒</span>
-              <ToggleSwitch checked={jobMatchAlerts} onToggle={() => { if (!hasAccount) return; setJobMatchAlerts(v => !v); }} disabled={!hasAccount} />
-            </div>
+    <section className="panel p-5" data-reveal="up">
+      <SectionPlate n="06" title="Operational preferences" />
+      <div className="divide-y divide-border-dark">
+        <div className="flex items-center justify-between gap-4 pb-4">
+          <p className="mono-label text-neutral-beige">High disruption alert</p>
+          <ToggleSwitch
+            checked={highDisruption}
+            onToggle={() => setHighDisruption(!highDisruption)}
+            label="High disruption alert"
+          />
+        </div>
+        <div className="flex items-start justify-between gap-4 pt-4">
+          <div>
+            <p className="mono-label text-neutral-beige">Job match alerts</p>
+            <p className="mono-label mt-2 text-dim-text">Requires account, coming soon</p>
           </div>
-          <div className="border-t border-border-dark mt-4" />
+          <div className="flex items-center gap-3">
+            <Icon
+              name="lock"
+              className={`text-[16px] ${hasAccount ? "text-dim-text" : "text-[#4a4d4b]"}`}
+              aria-hidden
+            />
+            <ToggleSwitch
+              checked={jobMatchAlerts}
+              onToggle={() => {
+                if (!hasAccount) return;
+                setJobMatchAlerts((v) => !v);
+              }}
+              disabled={!hasAccount}
+              label="Job match alerts"
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <p className="font-mono text-[10px] text-neutral-beige uppercase tracking-[0.05em] font-bold">{label}</p>
-      <ToggleSwitch checked={value} onToggle={() => onChange(!value)} />
-    </div>
-  );
-}
-
-function ToggleSwitch({ checked, onToggle, disabled }: { checked: boolean; onToggle: () => void; disabled?: boolean }) {
+function ToggleSwitch({
+  checked,
+  onToggle,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  label: string;
+}) {
   return (
     <button
       type="button"
-      onClick={() => { if (disabled) return; onToggle(); }}
+      onClick={() => {
+        if (disabled) return;
+        onToggle();
+      }}
       aria-pressed={checked}
-      className={`w-[44px] h-[24px] border-1.5 border-border-dark ${disabled ? "bg-[#1a1a1a] cursor-not-allowed" : checked ? "bg-primary/10 border-primary" : "bg-card-dark hover:bg-primary/5"}`}
+      aria-label={label}
+      disabled={disabled}
+      className={`relative h-[26px] w-[48px] border transition-colors ${
+        disabled
+          ? "cursor-not-allowed border-border-dark bg-[#1a1c1a]"
+          : checked
+            ? "border-primary bg-primary/10"
+            : "border-border-dark bg-background-dark hover:bg-card-hi"
+      }`}
     >
-      <span className={`block w-[20px] h-[20px] border-1.5 border-border-dark ${checked ? "translate-x-[18px] bg-[#FF2D00]" : "translate-x-[2px] bg-[#0E0E0E]"} transition-transform`} />
+      <span
+        className={`absolute top-[3px] block h-[18px] w-[18px] border transition-all ${
+          checked ? "left-[26px] border-primary bg-primary" : "left-[3px] border-border-dark bg-card-hi"
+        }`}
+        aria-hidden
+      />
     </button>
   );
 }
 
-function TerminalCard({ atsScore, atsResult, trendingSkills }: { atsScore: number | null; atsResult: AtsResult | null; trendingSkills: string[] }) {
+function TerminalCard({
+  atsScore,
+  atsResult,
+  trendingSkills,
+}: {
+  atsScore: number | null;
+  atsResult: AtsResult | null;
+  trendingSkills: string[];
+}) {
   const hasResumeAnalysis = atsResult != null;
   return (
-    <section>
-      <div className="brutalist-border p-4 bg-black">
-        <div className="flex items-center gap-2 mb-4 border-b border-[#F0EDE6]/10 pb-2">
-          <div className="w-2 h-2 rounded-none bg-[#FF2D00]" />
-          <div className="w-2 h-2 rounded-none bg-[#00ff41]" />
-          <div className="w-2 h-2 rounded-none bg-[#f0ede6]/60" />
-          <p className="mono-label text-[10px] ml-4 text-[#F0EDE6]/40 uppercase">TERMINAL_OUTPUT_SESSION_LOG</p>
+    <section data-reveal="up">
+      <div className="panel panel--flat !bg-black p-4">
+        <div className="mb-4 flex items-center gap-2 border-b border-border-dark pb-3">
+          <span className="lamp lamp--live" aria-hidden />
+          <span className="lamp lamp--ok" aria-hidden />
+          <span className="lamp lamp--off" aria-hidden />
+          <p className="mono-label ml-4 text-dim-text">Session log</p>
         </div>
-        <div className="font-mono text-[11px] leading-relaxed text-[#F0EDE6]/70">
-          <p>&gt; INITIALIZING PROFILE_ANALYSIS...</p>
+        <div className="mono-label leading-loose text-neutral-beige/70">
+          <p>&gt; INITIALIZING PROFILE_ANALYSIS</p>
           {hasResumeAnalysis ? (
             <>
-              <p>&gt; ANALYZING RESUME ATTACHMENT...</p>
-              <p>&gt; ATS_SCORE: <span className="text-primary">{atsResult.ats_score}</span></p>
+              <p>&gt; ANALYZING RESUME ATTACHMENT</p>
+              <p>
+                &gt; ATS_SCORE: <span className="text-primary">{atsResult.ats_score}</span>
+              </p>
               {atsResult.critical_issues.length > 0 && (
-                <p>&gt; CRITICAL_ISSUES: <span className="text-primary">{atsResult.critical_issues.length}</span> DETECTED</p>
+                <p>
+                  &gt; CRITICAL_ISSUES:{" "}
+                  <span className="text-primary">{atsResult.critical_issues.length}</span>{" "}
+                  DETECTED
+                </p>
               )}
-              {trendingSkills.length > 0 && <p>&gt; TRENDING_SKILLS: {trendingSkills.slice(0, 3).join(", ")}...</p>}
+              {trendingSkills.length > 0 && (
+                <p>&gt; TRENDING_SKILLS: {trendingSkills.slice(0, 3).join(", ")}</p>
+              )}
               {(atsResult.missing_keywords?.length ?? 0) > 0 && (
-                <p>&gt; ATS_GAPS: {atsResult.missing_keywords.slice(0, 3).join(", ")}...</p>
+                <p>&gt; ATS_GAPS: {atsResult.missing_keywords.slice(0, 3).join(", ")}</p>
               )}
               {atsResult.missing_keywords && atsResult.missing_keywords.length > 0 && (
-                <p>&gt; MISSING_KEYWORDS: <span className="text-primary">{atsResult.missing_keywords.length}</span> SUGGESTED</p>
+                <p>
+                  &gt; MISSING_KEYWORDS:{" "}
+                  <span className="text-primary">{atsResult.missing_keywords.length}</span>{" "}
+                  SUGGESTED
+                </p>
               )}
-              <p>&gt; STATUS: <span className="text-success-glow">ANALYSIS_COMPLETE</span></p>
+              <p>
+                &gt; STATUS: <span className="text-signal">ANALYSIS_COMPLETE</span>
+              </p>
             </>
           ) : (
-            <p>&gt; STATUS: <span className="text-[#666]">AWAITING_RESUME_UPLOAD</span></p>
+            <p>
+              &gt; STATUS: <span className="text-[#666]">AWAITING_RESUME_UPLOAD</span>
+            </p>
           )}
-          <p className="mt-2">&gt; COMPLETE<span className="terminal-cursor">|</span></p>
+          <p className="mt-2">
+            &gt; COMPLETE<span className="terminal-cursor">|</span>
+          </p>
         </div>
       </div>
     </section>

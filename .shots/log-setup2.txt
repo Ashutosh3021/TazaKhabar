@@ -1,0 +1,155 @@
+{
+  "url": "http://127.0.0.1:4400/setup/2",
+  "errors": [
+    "[desktop] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[desktop] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[keyboard] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[keyboard] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[hover] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[hover] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[mobile] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[mobile] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[reduced] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[reduced] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804"
+  ],
+  "failed": [
+    "[desktop] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[keyboard] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[hover] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[mobile] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[reduced] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED"
+  ],
+  "desktop": {
+    "loadMs": 136,
+    "loaderMs": 2447,
+    "settledMs": 4162,
+    "vitals": {
+      "lcpMs": 84,
+      "lcpElement": "h1.display",
+      "cls": 0.001
+    },
+    "height": 900,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "Experience level?"
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Calibration wizard | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    },
+    "nav": {
+      "href": "/setup/1",
+      "scrollYAfter": 0,
+      "title": "Calibration wizard | TazaKhabar"
+    },
+    "idleMotion": false,
+    "idleAt": null
+  },
+  "mobile": {
+    "throttled": true,
+    "loadMs": 1758,
+    "loaderMs": 4222,
+    "settledMs": 6210,
+    "vitals": {
+      "lcpMs": 644,
+      "lcpElement": "h1.display",
+      "cls": 0
+    },
+    "height": 844,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "Experience level?"
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Calibration wizard | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    }
+  },
+  "files": "31 screenshots in C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\setup2",
+  "notes": [
+    "desktop FPS runs headless on a software GPU: treat it as a floor, not a measurement of real hardware",
+    "mobile runs at 4x CPU slowdown on slow 4G: mobile.vitals and mobile.scrollFps are the numbers that count",
+    "loadMs: ms from navigation to the load event, null if it had not fired after 30 s (desktop) or 60 s (phone); a heavy page takes long, while visitors see content at vitals.lcpMs. loaderMs: ms until the #loader ended, null when the page has none",
+    "settledMs: ms from navigation by which the first screen stopped changing, never before the fixed wait. null: still changing at the cap, either a long intro or continuous motion (a live shader, video); d-01-hero / m-01-hero tell which. reduced.moving: the screen was still changing 1.5 s after load with reduced motion on"
+  ],
+  "keyboard": {
+    "stops": [
+      "a \"SKIP TO CONTENT\"",
+      "button \"FRESHER / STUDENT 0 TO 1 YEARS I\"",
+      "button \"EARLY CAREER 1 TO 3 YEARS II\"",
+      "button \"MID-LEVEL 3 TO 7 YEARS III\"",
+      "button \"SENIOR+ 7+ YEARS IV\"",
+      "a \"BACK\"",
+      "button \"CONTINUE\"",
+      "(body: focus left the page)"
+    ],
+    "skipLinkFirst": true,
+    "noVisibleFocus": [],
+    "invisibleFocus": [],
+    "stuck": false
+  },
+  "hover": {
+    "targets": [
+      {
+        "shot": "h-01",
+        "label": "button \"Fresher / Student 0 to 1 years\"",
+        "interactive": true,
+        "primary": true,
+        "react": "color",
+        "changed": [
+          "backgroundColor"
+        ]
+      },
+      {
+        "shot": "h-02",
+        "label": "button \"Continue\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      },
+      {
+        "shot": "h-03",
+        "label": "a \"Back\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      }
+    ],
+    "noHoverChange": [],
+    "colorOnly": [
+      "h-01 button \"Fresher / Student 0 to 1 years\""
+    ],
+    "covered": [],
+    "cursorFollower": true
+  },
+  "reduced": {
+    "hiddenText": 0,
+    "moving": false
+  },
+  "a11y": {
+    "violations": [],
+    "serious": 0,
+    "contrastNeedsReview": 19
+  }
+}

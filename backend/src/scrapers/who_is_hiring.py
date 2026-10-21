@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 from html import unescape
 
-from ..db.database import async_session
-from ..db.models import Report
+from ..db import repos
 from .base_scraper import BaseScraper
 from .client import HNClient
 
@@ -31,18 +30,22 @@ class WhoIsHiringScraper(BaseScraper):
         # Use an absolute path anchored to this file so it works regardless of CWD
         self._last_thread_id_file = Path(__file__).resolve().parent.parent.parent / ".last_wih_thread"
     
-    def _get_last_thread_id(self) -> int | None:
-        """Get the last processed Who Is Hiring thread ID."""
+    async def _get_last_thread_id(self) -> int | None:
+        """Get the last processed Who Is Hiring thread ID from shared state."""
         try:
-            return int(self._last_thread_id_file.read_text(encoding="utf-8").strip())
-        except (FileNotFoundError, ValueError, IOError):
+            value = await repos.get_state("last_wih_thread")
+            return int(value) if value else None
+        except (TypeError, ValueError):
             return None
-    
-    def _set_last_thread_id(self, thread_id: int) -> None:
-        """Store the last processed Who Is Hiring thread ID."""
+        except Exception as e:
+            logger.warning(f"Could not read last thread ID: {e}")
+            return None
+
+    async def _set_last_thread_id(self, thread_id: int) -> None:
+        """Store the last processed Who Is Hiring thread ID in shared state."""
         try:
-            self._last_thread_id_file.write_text(str(thread_id), encoding="utf-8")
-        except IOError as e:
+            await repos.set_state("last_wih_thread", str(thread_id))
+        except Exception as e:
             logger.warning(f"Failed to save last thread ID: {e}")
     
     async def discover_thread(self) -> dict[str, Any] | None:
@@ -268,18 +271,7 @@ class WhoIsHiringScraper(BaseScraper):
         print(">>> [WIH-SCRAPER] Starting Who Is Hiring scraper run")
         logger.info("Starting Who Is Hiring scraper run")
 
-        # Create report entry
-        async with async_session() as session:
-            report = Report(
-                version="2",
-                items_collected=0,
-                new_items=0,
-                status="running",
-                scraper_name="who_is_hiring",
-            )
-            session.add(report)
-            await session.commit()
-            report_id = report.id
+        await self.record_run("who_is_hiring", "running")
 
         try:
             # Discover latest thread
@@ -288,12 +280,7 @@ class WhoIsHiringScraper(BaseScraper):
             if not thread:
                 print(">>> [WIH-SCRAPER] ERROR: No thread discovered. Check Algolia API key and internet connection.")
                 logger.warning("No Who Is Hiring thread found")
-                async with async_session() as session:
-                    from sqlalchemy import select as _select
-                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
-                    if r:
-                        r.status = "failed"
-                        await session.commit()
+                await self.record_run("who_is_hiring", "failed")
                 return {"collected": 0, "new": 0}
 
             thread_id = thread.get("id") or thread.get("objectID")
@@ -303,26 +290,15 @@ class WhoIsHiringScraper(BaseScraper):
             if not thread_id:
                 print(f">>> [WIH-SCRAPER] ERROR: Thread has no ID field!")
                 logger.error("Thread has no ID")
-                async with async_session() as session:
-                    from sqlalchemy import select as _select
-                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
-                    if r:
-                        r.status = "failed"
-                        await session.commit()
+                await self.record_run("who_is_hiring", "failed")
                 return {"collected": 0, "new": 0}
 
             # Check if this is a new thread
-            last_thread_id = self._get_last_thread_id()
+            last_thread_id = await self._get_last_thread_id()
             if last_thread_id == int(thread_id):
                 print(f">>> [WIH-SCRAPER] Thread {thread_id} already processed (last run), skipping.")
                 logger.info(f"Thread {thread_id} already processed, skipping")
-                async with async_session() as session:
-                    from sqlalchemy import select as _select
-                    r = (await session.execute(_select(Report).where(Report.id == report_id))).scalar_one_or_none()
-                    if r:
-                        r.status = "completed"
-                        r.items_collected = 0
-                        await session.commit()
+                await self.record_run("who_is_hiring", "completed", 0, 0)
                 return {"collected": 0, "new": 0}
             else:
                 print(f">>> [WIH-SCRAPER] New thread detected! Last: {last_thread_id}, Current: {thread_id}")
@@ -401,20 +377,8 @@ class WhoIsHiringScraper(BaseScraper):
                 raise
 
             # Update report
-            self._set_last_thread_id(int(thread_id))
-
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.items_collected = total
-                    report.new_items = new_count
-                    report.status = "completed"
-                    await session.commit()
-                else:
-                    logger.warning(f"Could not find report {report_id} to update")
+            await self._set_last_thread_id(int(thread_id))
+            await self.record_run("who_is_hiring", "completed", total, new_count)
 
             print(f">>> [WIH-SCRAPER] SUCCESS: {new_count} new jobs saved!")
             print(">>> [WIH-SCRAPER] Scraper run completed successfully")
@@ -429,15 +393,6 @@ class WhoIsHiringScraper(BaseScraper):
             print(f">>> [WIH-SCRAPER] TRACE: {traceback.format_exc()}")
             logger.error(f"Who Is Hiring scraper failed: {e}")
 
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.status = "failed"
-                    await session.commit()
-                else:
-                    logger.warning(f"Could not find report {report_id} to update status to failed")
+            await self.record_run("who_is_hiring", "failed")
 
             return {"collected": 0, "new": 0}

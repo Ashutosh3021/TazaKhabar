@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Icon } from "@/components/Icon";
 import { useTaza } from "./TazaContext";
 
 const tabs = [
@@ -18,42 +19,40 @@ export default function BottomNav() {
   const { feedNewCount, radarNewCount } = useTaza();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-dark bg-background-dark md:hidden">
+    <nav
+      aria-label="Primary"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border-dark bg-background-dark md:hidden"
+    >
       <div className="grid grid-cols-6">
         {tabs.map((t) => {
           const isActive = pathname === t.href || pathname.startsWith(t.matchPrefix);
+          const feedBadge = t.icon === "newspaper" && feedNewCount > 0;
+          const radarBadge = t.icon === "radar" && radarNewCount > 0;
           return (
             <Link
               key={t.href}
               href={t.href}
-              className={`flex flex-col items-center justify-center gap-1 py-3 ${
-                isActive ? "active-tab text-primary" : "text-dim-text hover:text-neutral-beige"
+              aria-current={isActive ? "page" : undefined}
+              className={`relative flex min-h-[56px] flex-col items-center justify-center gap-1 py-2 transition-colors ${
+                isActive ? "text-primary" : "text-dim-text"
               }`}
             >
+              <span
+                aria-hidden
+                className={`absolute inset-x-0 top-0 h-[2px] origin-left transition-transform duration-200 ${
+                  isActive ? "scale-x-100 bg-primary" : "scale-x-0 bg-primary"
+                }`}
+              />
               <span className="relative inline-flex items-center justify-center">
-                <span
-                  className={`material-symbols-outlined text-[22px] ${
-                    isActive ? "text-primary" : "text-dim-text"
-                  }`}
-                >
-                  {t.icon}
-                </span>
-                {t.icon === "newspaper" && feedNewCount > 0 ? (
-                  <span className="absolute -top-2 -right-2 inline-flex h-[8px] w-[8px] items-center justify-center rounded-full bg-[#FF2D00] text-white">
-                    <span className="font-mono text-[7px] font-bold leading-none">
-                      {feedNewCount}
-                    </span>
-                  </span>
-                ) : null}
-                {t.icon === "radar" && radarNewCount > 0 ? (
-                  <span className="absolute -top-2 -right-2 inline-flex h-[8px] w-[8px] items-center justify-center rounded-full bg-[#FF2D00] text-white">
-                    <span className="font-mono text-[7px] font-bold leading-none">
-                      {radarNewCount}
-                    </span>
-                  </span>
-                ) : null}
+                <Icon name={t.icon} className="text-[20px]" aria-hidden />
+                {(feedBadge || radarBadge) && (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 inline-flex h-[10px] w-[10px] items-center justify-center bg-primary"
+                    aria-hidden
+                  />
+                )}
               </span>
-              <span className="mono-label text-[9px] leading-none">{t.label}</span>
+              <span className="mono-label text-[8px] leading-none">{t.label}</span>
             </Link>
           );
         })}
@@ -61,4 +60,3 @@ export default function BottomNav() {
     </nav>
   );
 }
-

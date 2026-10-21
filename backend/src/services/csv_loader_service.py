@@ -5,14 +5,12 @@ import csv
 import logging
 import os
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
-
-from src.db.database import async_session
-from src.db.models import Job
+from src.db import repos
 
 logger = logging.getLogger(__name__)
 
@@ -104,124 +102,99 @@ async def load_jobs_from_csv(
     start_row: int = 0,
 ) -> dict[str, Any]:
     """
-    Load jobs from jobs_output.csv into the database.
-    
+    Load jobs from jobs_output.csv into the store.
+
     Args:
         limit: Maximum number of jobs to load (None = all)
         clear_existing: Whether to clear existing jobs before loading
         start_row: Skip this many data rows (for incremental notebook sync)
-        
+
     Returns:
         Dict with success count and errors
     """
     if not JOBS_CSV_PATH.exists():
         logger.error(f"Jobs CSV not found: {JOBS_CSV_PATH}")
         return {"success": 0, "errors": ["CSV file not found"], "total": 0}
-    
+
     logger.info(f"Loading jobs from {JOBS_CSV_PATH}")
-    
-    # Clear existing jobs if requested
+
     if clear_existing:
-        from sqlalchemy import delete
-        async with async_session() as session:
-            await session.execute(delete(Job))
-            await session.commit()
-            logger.info("Cleared existing jobs from database")
-    
+        removed = await repos.delete_all_jobs()
+        logger.info("Cleared %s existing jobs", removed)
+
     loaded_count = 0
     skipped_count = 0
     error_count = 0
-    errors = []
-    
+    errors: list[str] = []
+
+    known = await repos.existing_job_triples()
+    now = datetime.utcnow().isoformat()
+    new_rows: list[dict[str, Any]] = []
+
     try:
-        with open(JOBS_CSV_PATH, 'r', encoding='utf-8') as f:
+        with open(JOBS_CSV_PATH, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            
-            async with async_session() as session:
-                for i, row in enumerate(reader):
-                    if i < start_row:
-                        skipped_count += 1
+
+            for i, row in enumerate(reader):
+                if i < start_row:
+                    skipped_count += 1
+                    continue
+                if limit is not None and loaded_count >= limit:
+                    break
+
+                try:
+                    title = (row.get("Job Title") or "").strip()
+                    company = (row.get("Company Name") or "").strip()
+                    location = (row.get("Location") or "").strip()
+                    apply_link = (row.get("Apply Link") or "").strip()
+                    description = (row.get("Job Description") or "").strip()[:1000]
+
+                    if not title or not company:
                         continue
-                    if limit is not None and loaded_count >= limit:
-                        break
-                    
-                    try:
-                        # Extract fields from CSV
-                        title = row.get('Job Title', '').strip()
-                        company = row.get('Company Name', '').strip()
-                        salary = row.get('Salary', '').strip()
-                        experience = row.get('Experience', '').strip()
-                        location = row.get('Location', '').strip()
-                        apply_link = row.get('Apply Link', '').strip()
-                        description = row.get('Job Description', '').strip()[:1000]
-                        
-                        if not title or not company:
-                            continue
-                        
-                        # Extract role and tags using LLM-like logic
-                        role = extract_role_from_title(title)
-                        tags = extract_tags_from_title_and_description(title, description)
-                        location_type = infer_location_type(location)
-                        
-                        # Check if job already exists
-                        stmt = select(Job).where(
-                            Job.title == title,
-                            Job.company == company,
-                            Job.apply_link == apply_link
-                        )
-                        result = await session.execute(stmt)
-                        existing = result.scalar_one_or_none()
-                        
-                        if existing:
-                            # Update existing job
-                            existing.role = role
-                            existing.tags = tags
-                            existing.description = description
-                            existing.location = location
-                            existing.apply_link = apply_link
-                            existing.processed = True
-                            existing.scraped_at = datetime.utcnow()
-                        else:
-                            # Create new job
-                            job = Job(
-                                hn_item_id=None,  # CSV jobs don't have HN ID
-                                title=title,
-                                company=company,
-                                location=location,
-                                tags=tags,
-                                apply_link=apply_link if apply_link else None,
-                                email_contact=None,
-                                is_ghost_job=False,
-                                deadline=None,
-                                posted_at=datetime.utcnow(),
-                                scraped_at=datetime.utcnow(),
-                                report_version="2",
-                                cleaned_title=title,
-                                cleaned_company=company,
-                                role=role,
-                                description=description,
-                                processed=True,
-                            )
-                            session.add(job)
-                        
+
+                    triple = (title, company, apply_link)
+                    if triple in known:
                         loaded_count += 1
-                        
-                        if loaded_count % 50 == 0:
-                            await session.commit()
-                            logger.info(f"Loaded {loaded_count} jobs...")
-                    
-                    except Exception as e:
-                        error_count += 1
-                        errors.append(f"Row {i}: {str(e)}")
-                        logger.warning(f"Error loading job row {i}: {e}")
-                
-                # Final commit
-                await session.commit()
-    
+                        continue
+
+                    role = extract_role_from_title(title)
+                    tags = extract_tags_from_title_and_description(title, description)
+
+                    new_rows.append(
+                        {
+                            "id": uuid.uuid4().hex,
+                            "hn_item_id": None,
+                            "title": title,
+                            "company": company,
+                            "location": location,
+                            "tags": tags,
+                            "apply_link": apply_link or None,
+                            "email_contact": None,
+                            "is_ghost_job": False,
+                            "deadline": None,
+                            "posted_at": now,
+                            "scraped_at": now,
+                            "cleaned_title": title,
+                            "cleaned_company": company,
+                            "role": role,
+                            "description": description,
+                            "processed": True,
+                        }
+                    )
+                    known.add(triple)
+                    loaded_count += 1
+                except Exception as e:
+                    error_count += 1
+                    errors.append(f"Row {i}: {str(e)}")
+                    logger.warning(f"Error loading job row {i}: {e}")
+
+        if new_rows:
+            await repos.insert_rows("jobs", new_rows)
+
     except Exception as e:
         logger.error(f"Error loading CSV: {e}")
         return {"success": loaded_count, "errors": [str(e)], "total": 0}
-    
+
     logger.info(
         "CSV loading complete: %s loaded, %s skipped, %s errors",
         loaded_count,

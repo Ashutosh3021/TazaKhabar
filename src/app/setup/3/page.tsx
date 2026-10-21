@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/Icon";
 import { useRef, useState } from "react";
 import { useTaza } from "@/components/TazaContext";
+import { SetupFrame } from "@/components/SetupFrame";
 
 export default function SetupStep3Page() {
   const router = useRouter();
@@ -12,83 +13,60 @@ export default function SetupStep3Page() {
   const { setResumeUploaded } = useTaza();
 
   return (
-    <div className="min-h-screen flex flex-col px-6 py-10 bg-background-dark">
-      <div className="w-full max-w-2xl mx-auto flex flex-col flex-1">
-        <div className="h-[2px] bg-border-dark">
-          <div style={{ width: "100%" }} className="h-full bg-primary" />
-        </div>
+    <SetupFrame
+      step={3}
+      optional
+      title={
+        <>
+          Load your <span className="accent">resume.</span>
+        </>
+      }
+      backHref="/setup/2"
+      backLabel="Skip"
+      onNext={() => {
+        // Treat completion as having a resume attached (even if user skipped uploading).
+        setResumeUploaded(true);
+        router.push("/jobs");
+      }}
+      nextLabel="Complete setup"
+    >
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="panel group flex w-full items-start gap-4 p-6 text-left transition-colors hover:bg-card-hi md:p-8"
+      >
+        <Icon name="upload_file" className="text-[36px] text-primary" aria-hidden />
+        <span className="grid gap-2">
+          <span className="mono-label text-neutral-beige">
+            {fileName || "Load resume file"}
+          </span>
+          <span className="mono-label text-[10px] text-dim-text">
+            PDF or TXT, max 5MB. Parsed locally, scored against live market demand.
+          </span>
+          {fileName ? (
+            <span className="mono-label text-primary">File armed: {fileName}</span>
+          ) : null}
+        </span>
+      </button>
 
-        <p className="mono-label text-[10px] text-primary mt-6">
-          STEP 03 OF 03 · OPTIONAL
-        </p>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.txt,.docx"
+        className="sr-only"
+        aria-label="Resume file"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            setFileName(f.name);
+            setResumeUploaded(true);
+          }
+        }}
+      />
 
-        <h1 className="font-serif text-4xl md:text-5xl font-black mt-6 leading-tight">
-          Upload your{" "}
-          <span className="text-primary italic font-black">resume.</span>
-        </h1>
-
-        <div className="mt-10">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full text-left p-8 rounded-none border-2 border-dashed border-neutral-border hover:border-primary/60 transition-colors"
-          >
-            <div className="flex items-start gap-4">
-              <span className="material-symbols-outlined text-[44px] text-primary">
-                upload_file
-              </span>
-              <div>
-                <p className="mono-label text-[12px] text-neutral-beige">
-                  DRAG & DROP RESUME HERE
-                </p>
-                <p className="mono-label text-[10px] text-dim-text mt-2">
-                  PDF, DOCX · MAX 5MB
-                </p>
-                {fileName ? (
-                  <p className="mono-label text-[10px] text-primary mt-3">
-                    {fileName}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) {
-                setFileName(f.name);
-                setResumeUploaded(true);
-              }
-            }}
-          />
-        </div>
-
-        <div className="mt-auto pt-10 flex items-center justify-between gap-4">
-          <Link
-            href="/jobs"
-            className="brutalist-border px-6 py-3 mono-label text-[11px] hover:bg-primary/10"
-          >
-            SKIP
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              // Treat completion as having a resume attached (even if user skipped uploading).
-              setResumeUploaded(true);
-              router.push("/jobs");
-            }}
-            className="brutalist-border-primary bg-primary/10 px-6 py-3 mono-label text-[11px] text-neutral-beige hover:bg-primary/20 transition-colors"
-          >
-            COMPLETE SETUP
-          </button>
-        </div>
-      </div>
-    </div>
+      <p className="mono-label mt-6 text-dim-text">
+        You can upload later from the profile panel.
+      </p>
+    </SetupFrame>
   );
 }
-

@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useTaza } from "@/components/TazaContext";
-import Link from "next/link";
+import { SetupFrame } from "@/components/SetupFrame";
+import { updateProfile } from "@/lib/api";
 
 const ROLE_CHIPS = [
   "Frontend Dev",
@@ -27,67 +28,47 @@ export default function SetupStep1Page() {
 
   function toggleRole(role: string) {
     const has = selected.includes(role);
-    const nextRoles = has
-      ? selected.filter((r) => r !== role)
-      : [...selected, role];
+    const nextRoles = has ? selected.filter((r) => r !== role) : [...selected, role];
     setUserProfile({ ...userProfile, roles: nextRoles });
+    // Keep the server copy in sync so personalization has the same roles.
+    updateProfile({ roles: nextRoles }).catch(() => undefined);
   }
 
   return (
-    <div className="min-h-screen flex flex-col px-6 py-10 bg-background-dark">
-      <div className="w-full max-w-2xl mx-auto flex flex-col flex-1">
-        <div className="w-full">
-          <div className="h-[2px] bg-border-dark">
-            <div style={{ width: "33%" }} className="h-full bg-primary" />
-          </div>
-
-          <p className="mono-label text-[10px] text-primary mt-6">
-            STEP 01 OF 03
-          </p>
-
-          <h1 className="font-serif text-4xl md:text-5xl font-black mt-6">
-            What roles are{" "}
-            <span className="text-primary italic font-black">you targeting?</span>
-          </h1>
-        </div>
-
-        <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {ROLE_CHIPS.map((role) => {
-            const isSelected = selected.includes(role);
-            return (
-              <button
-                key={role}
-                type="button"
-                onClick={() => toggleRole(role)}
-                className={`px-4 py-3 text-left brutalist-border font-mono text-[12px] uppercase tracking-[0.05em] transition-colors ${
-                  isSelected
-                    ? "brutalist-border-primary bg-[rgba(255,45,0,0.1)]"
-                    : "bg-background-dark hover:bg-primary/10"
-                }`}
-              >
-                {role}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-auto pt-10 flex items-center justify-between gap-4">
-          <Link
-            href="/auth"
-            className="brutalist-border px-6 py-3 mono-label text-[11px] hover:bg-primary/10"
-          >
-            BACK
-          </Link>
-          <button
-            type="button"
-            onClick={() => router.push("/setup/2")}
-            className="brutalist-border-primary bg-primary/10 px-6 py-3 mono-label text-[11px] text-neutral-beige hover:bg-primary/20 transition-colors"
-          >
-            CONTINUE
-          </button>
-        </div>
+    <SetupFrame
+      step={1}
+      title={
+        <>
+          What roles are <span className="accent">you targeting?</span>
+        </>
+      }
+      backHref="/auth"
+      backLabel="Back"
+      onNext={() => router.push("/setup/2")}
+      nextLabel="Continue"
+    >
+      <p className="mono-label mb-6 text-dim-text">
+        {selected.length > 0
+          ? `${String(selected.length).padStart(2, "0")} channel${selected.length > 1 ? "s" : ""} armed`
+          : "Select every role you want the radar to watch"}
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {ROLE_CHIPS.map((role) => {
+          const isSelected = selected.includes(role);
+          return (
+            <button
+              key={role}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => toggleRole(role)}
+              className={`chip justify-between !px-4 !py-3 !text-[12px] ${isSelected ? "is-on" : ""}`}
+            >
+              <span>{role}</span>
+              <span className={`lamp ${isSelected ? "lamp--live" : "lamp--off"}`} aria-hidden />
+            </button>
+          );
+        })}
       </div>
-    </div>
+    </SetupFrame>
   );
 }
-

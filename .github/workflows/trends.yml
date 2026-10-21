@@ -1,0 +1,41 @@
+name: trends
+
+# Weekly keyword counts plus the LLM market observation. The counts depend on
+# a full week of scrapes, so once a day is enough.
+on:
+  schedule:
+    - cron: "15 0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: trends
+  cancel-in-progress: false
+
+jobs:
+  trends:
+    name: Recount trends and write the observation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.ci.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.ci.txt
+
+      - name: Count keywords and generate the observation
+        env:
+          PYRONITES_URL: ${{ secrets.PYRONITES_URL }}
+          PYRONITES_KEY: ${{ secrets.PYRONITES_KEY }}
+          PYRONITES_PROJECT_ID: ${{ secrets.PYRONITES_PROJECT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: python -m src.cli ci-trends

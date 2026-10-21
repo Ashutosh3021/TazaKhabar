@@ -1,0 +1,259 @@
+{
+  "url": "http://127.0.0.1:4400/jobs",
+  "errors": [
+    "[desktop] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[desktop] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[desktop] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[desktop] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[desktop] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[desktop] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[desktop] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[keyboard] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[keyboard] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[keyboard] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[keyboard] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[hover] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[hover] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[hover] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[hover] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[mobile] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[mobile] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[mobile] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[mobile] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804",
+    "[reduced] [JobsPage] fetchJobs error: Collector bus offline. Point the instrument at an API host to resume sweeps.",
+    "[reduced] Failed to load more jobs: Error: Collector bus offline. Point the instrument at an API host to resume sweeps.\n    at r (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:12925)\n    at d (http://127.0.0.1:4400/_next/static/chunks/39-44e8d1ceec15f386.js:1:14791)\n    at I (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3555)\n    at IntersectionObserver.threshold (http://127.0.0.1:4400/_next/static/chunks/app/jobs/page-a401cc3b040971b4.js:1:3850)",
+    "[reduced] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[reduced] [TazaKhabar] Failed to fetch Pyronites health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:783)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:1999)\n    at http://127.0.0.1:4400/_next/static/chunks/849-7905956bdc5b62c8.js:1:9804"
+  ],
+  "failed": [
+    "[desktop] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[keyboard] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[hover] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[mobile] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED",
+    "[reduced] http://localhost:8000/health/pyronites net::ERR_CONNECTION_REFUSED"
+  ],
+  "desktop": {
+    "loadMs": 120,
+    "loaderMs": 2427,
+    "settledMs": 4128,
+    "vitals": {
+      "lcpMs": 108,
+      "lcpElement": "h1.display",
+      "cls": 0.001
+    },
+    "height": 1441,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "Who is hiring."
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Job radar | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    },
+    "nav": {
+      "href": "/setup/1",
+      "scrollYAfter": 0,
+      "title": "Calibration wizard | TazaKhabar"
+    },
+    "idleMotion": false,
+    "idleAt": null
+  },
+  "mobile": {
+    "throttled": true,
+    "loadMs": 1783,
+    "loaderMs": 4216,
+    "settledMs": 6153,
+    "vitals": {
+      "lcpMs": 592,
+      "lcpElement": "p.mono-label",
+      "cls": 0.005
+    },
+    "height": 844,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "Who is hiring."
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Job radar | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    }
+  },
+  "files": [
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-00-firstpaint.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-02-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-03-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-04-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-05-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-06-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-07-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-90-transition-a.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-90-transition-b.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-90-transition-c.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-91-after-nav.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\d-92-back.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\k-01-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\k-02-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\k-03-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\k-04-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-01-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-01-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-02-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-02-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-03-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-03-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-04-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-04-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-05-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-05-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-06-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-06-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-07-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\h-07-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-02-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-03-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-04-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-05-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\m-06-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\r-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\jobs\\r-02-mid.png"
+  ],
+  "notes": [
+    "desktop FPS runs headless on a software GPU: treat it as a floor, not a measurement of real hardware",
+    "mobile runs at 4x CPU slowdown on slow 4G: mobile.vitals and mobile.scrollFps are the numbers that count",
+    "loadMs: ms from navigation to the load event, null if it had not fired after 30 s (desktop) or 60 s (phone); a heavy page takes long, while visitors see content at vitals.lcpMs. loaderMs: ms until the #loader ended, null when the page has none",
+    "settledMs: ms from navigation by which the first screen stopped changing, never before the fixed wait. null: still changing at the cap, either a long intro or continuous motion (a live shader, video); d-01-hero / m-01-hero tell which. reduced.moving: the screen was still changing 1.5 s after load with reduced motion on"
+  ],
+  "keyboard": {
+    "stops": [
+      "a \"SKIP TO CONTENT\"",
+      "a \"TAZAKHABAR/MK-II\"",
+      "a \"01/SETUP\"",
+      "a \"02/JOBS\"",
+      "a \"03/TRENDS\"",
+      "a \"04/Q&A\"",
+      "a \"05/DIGEST\"",
+      "a \"Profile\"",
+      "button \"NEW DATA AVAILABLE, SWAP THE REPORT ↑\"",
+      "button \"RESET\"",
+      "input \"INPUT\"",
+      "input \"INPUT\""
+    ],
+    "skipLinkFirst": true,
+    "noVisibleFocus": [],
+    "invisibleFocus": [],
+    "stuck": false
+  },
+  "hover": {
+    "targets": [
+      {
+        "shot": "h-01",
+        "label": "button \"New data available, swap the report\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "filter"
+        ]
+      },
+      {
+        "shot": "h-02",
+        "label": "button \"Reset\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      },
+      {
+        "shot": "h-03",
+        "label": "button \"ALL\"",
+        "interactive": true,
+        "primary": true,
+        "react": "color",
+        "changed": [
+          "backgroundColor"
+        ]
+      },
+      {
+        "shot": "h-04",
+        "label": "button \"Retry sweep\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      },
+      {
+        "shot": "h-05",
+        "label": "a \"TazaKhabar /MK-II\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "opacity"
+        ]
+      },
+      {
+        "shot": "h-06",
+        "label": "a \"01/SETUP\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "textDecorationColor",
+          "transform"
+        ]
+      },
+      {
+        "shot": "h-07",
+        "label": "a \"02/JOBS\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "transform",
+          "opacity"
+        ]
+      }
+    ],
+    "noHoverChange": [],
+    "colorOnly": [
+      "h-03 button \"ALL\""
+    ],
+    "covered": [],
+    "cursorFollower": true
+  },
+  "reduced": {
+    "hiddenText": 0,
+    "moving": false
+  },
+  "a11y": {
+    "violations": [],
+    "serious": 0,
+    "contrastNeedsReview": 51
+  }
+}

@@ -1,6 +1,6 @@
 /**
- * TazaKhabar API client — replaces mock data with live backend calls.
- * @deprecated Data functions are now imported from this module.
+ * TazaKhabar API client — every call goes through the backend with the
+ * session cookie (httpOnly, set by the backend on sign in).
  */
 import type { DigestItem, Job, Trend } from "@/types";
 
@@ -12,8 +12,20 @@ function getApiBase(): string {
     return "http://localhost:8000";
   }
   throw new Error(
-    "NEXT_PUBLIC_API_URL is required in production. Set it in Vercel project settings."
+    "Collector bus offline. Point the instrument at an API host to resume sweeps."
   );
+}
+
+/**
+ * Wrapper around fetch that always sends the session cookie.
+ */
+async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(url, { ...init, headers, credentials: "include" });
 }
 
 /**
@@ -33,23 +45,83 @@ function buildQuery(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : "";
 }
 
-/**
- * Get user ID from localStorage profile.
- */
-function getUserIdHeader(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (typeof window !== "undefined") {
-    try {
-      const profile = localStorage.getItem("tazakhabar:userProfile");
-      if (profile) {
-        const parsed = JSON.parse(profile);
-        if (parsed.id) headers["X-User-ID"] = parsed.id;
-      }
-    } catch {
-      // ignore
-    }
+// ============================================================================
+// Auth
+// ============================================================================
+
+export interface SessionUser {
+  id: string | null;
+  email: string | null;
+  authenticated: boolean;
+}
+
+export interface AuthResult {
+  authenticated: boolean;
+  user: SessionUser;
+  message?: string;
+}
+
+async function readAuthError(res: Response, fallback: string): Promise<string> {
+  const error = await res.json().catch(() => null);
+  const detail = error?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && typeof detail.error === "string") {
+    return detail.error;
   }
-  return headers;
+  return fallback;
+}
+
+/** Create an account, or sign in when the account already exists. */
+export async function signUp(email: string, password: string): Promise<AuthResult> {
+  const res = await apiFetch(`${getApiBase()}/api/auth/signup`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    throw new Error(await readAuthError(res, "Sign up failed"));
+  }
+  return res.json();
+}
+
+/** Sign in with email and password. */
+export async function signIn(email: string, password: string): Promise<AuthResult> {
+  const res = await apiFetch(`${getApiBase()}/api/auth/login`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    throw new Error(await readAuthError(res, "Sign in failed"));
+  }
+  return res.json();
+}
+
+/** Drop the session on the backend and in the browser. */
+export async function signOut(): Promise<void> {
+  await apiFetch(`${getApiBase()}/api/auth/logout`, { method: "POST" });
+}
+
+/** Resolve the current session. */
+export async function fetchSession(): Promise<AuthResult> {
+  try {
+    const res = await apiFetch(`${getApiBase()}/api/auth/me`, { cache: "no-store" });
+    if (!res.ok) return { authenticated: false, user: { id: null, email: null, authenticated: false } };
+    return res.json();
+  } catch {
+    return { authenticated: false, user: { id: null, email: null, authenticated: false } };
+  }
+}
+
+/** Ask the backend to email a password reset link. */
+export async function requestPasswordReset(email: string): Promise<string> {
+  const res = await apiFetch(`${getApiBase()}/api/auth/password/forgot`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    throw new Error(await readAuthError(res, "Could not send the reset email"));
+  }
+  const body = await res.json();
+  return body.message ?? "If that address has an account, a reset link is on its way.";
 }
 
 /**
@@ -61,6 +133,7 @@ export async function fetchJobs(filters?: {
   startup_only?: boolean;
   skip?: number;
   limit?: number;
+  personalize?: boolean;
 }): Promise<{ data: Job[]; meta: { total: number; skip: number; limit: number; has_more: boolean } }> {
   const params: Record<string, unknown> = {};
   if (filters?.roles?.length) params.roles = filters.roles;
@@ -68,13 +141,13 @@ export async function fetchJobs(filters?: {
   if (filters?.startup_only) params.startup_only = filters.startup_only;
   if (filters?.skip !== undefined) params.skip = filters.skip;
   if (filters?.limit !== undefined) params.limit = filters.limit;
+  if (filters?.personalize) params.personalize = filters.personalize;
 
   const qs = buildQuery(params);
   const url = `${getApiBase()}/api/jobs${qs}`;
 
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",  // Jobs change frequently; never serve stale cached empty responses
+  const res = await apiFetch(url, {
+    cache: "no-store", // Jobs change frequently; never serve stale cached empty responses
   });
 
   if (!res.ok) {
@@ -104,8 +177,7 @@ export async function fetchNews(params?: {
   const qs = buildQuery(queryParams);
   const url = `${getApiBase()}/api/news${qs}`;
 
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+  const res = await apiFetch(url, {
     next: { revalidate: 300 },
   });
 
@@ -121,15 +193,12 @@ export async function fetchNews(params?: {
 }
 
 /**
- * Fetch badge counts (new items since last scrape).
+ * Fetch badge counts (items the user has not seen yet).
  */
 export async function fetchBadgeCounts(): Promise<{ new_jobs: number; new_news: number }> {
   try {
     const url = `${getApiBase()}/api/badge`;
-    const res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-    });
+    const res = await apiFetch(url, { cache: "no-store" });
 
     if (!res.ok) {
       throw new Error(`Failed to fetch badge counts: ${res.status}`);
@@ -146,6 +215,18 @@ export async function fetchBadgeCounts(): Promise<{ new_jobs: number; new_news: 
 }
 
 /**
+ * Mark everything as seen for the signed-in user.
+ */
+export async function markFeedSeen(): Promise<{ new_jobs: number; new_news: number }> {
+  const res = await apiFetch(`${getApiBase()}/api/badge/seen`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Failed to mark the feed as seen: ${res.status}`);
+  }
+  const json = await res.json();
+  return { new_jobs: json.new_jobs ?? 0, new_news: json.new_news ?? 0 };
+}
+
+/**
  * Fetch trending keywords with week-over-week analysis.
  */
 export async function fetchTrends(params?: {
@@ -154,8 +235,7 @@ export async function fetchTrends(params?: {
   const limit = params?.limit ?? 20;
   const url = `${getApiBase()}/api/trends?limit=${limit}`;
 
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+  const res = await apiFetch(url, {
     next: { revalidate: 300 },
   });
 
@@ -175,32 +255,9 @@ export async function fetchTrends(params?: {
  */
 export async function fetchTrendPredictions(): Promise<{ data: Array<{ keyword: string; current: number; w2: number | null; w4: number | null; confidence: number }>; meta: Record<string, unknown> }> {
   const url = `${getApiBase()}/api/trends/predictions`;
-  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error(`Failed to fetch trend predictions: ${res.status}`);
   return res.json();
-}
-
-/**
- * Trigger report refresh (swap Report 2 → Report 1).
- */
-export async function triggerRefresh(): Promise<{ status: string; new_jobs: number; new_news: number }> {
-  const url = `${getApiBase()}/api/refresh`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to trigger refresh: ${res.status} ${res.statusText}`);
-  }
-
-  const json = await res.json();
-  return {
-    status: json.status ?? "swapped",
-    new_jobs: json.new_jobs ?? 0,
-    new_news: json.new_news ?? 0,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -220,9 +277,8 @@ export async function analyseResume(file: File): Promise<{
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${getApiBase()}/api/resume/analyse`, {
+  const res = await apiFetch(`${getApiBase()}/api/resume/analyse`, {
     method: "POST",
-    headers: getUserIdHeader(),
     body: formData,
   });
 
@@ -270,8 +326,7 @@ export async function fetchDigest(params?: {
   const qs = searchParams.toString();
   const url = `${getApiBase()}/api/digest${qs ? `?${qs}` : ""}`;
 
-  const res = await fetch(url, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
+  const res = await apiFetch(url, {
     next: { revalidate: 300 },
   });
 
@@ -288,17 +343,16 @@ export async function fetchProfile(): Promise<{
   email: string;
   roles: string[];
   experience_level: string;
-  resume_text: string | null;
+  resume_text_length: number | null;
   ats_score: number | null;
   ats_critical_issues: string[];
   ats_missing_keywords: string[];
   ats_suggested_additions: string[];
   last_analysis_at: string | null;
+  resume_path: string | null;
   preferences: Record<string, unknown>;
 }> {
-  const res = await fetch(`${getApiBase()}/api/profile`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/profile`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
   return res.json();
 }
@@ -313,9 +367,8 @@ export async function updateProfile(data: {
   experience_level?: string;
   preferences?: Record<string, unknown>;
 }): Promise<{ id: string }> {
-  const res = await fetch(`${getApiBase()}/api/profile`, {
+  const res = await apiFetch(`${getApiBase()}/api/profile`, {
     method: "POST",
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to update profile: ${res.status}`);
@@ -330,8 +383,7 @@ export async function fetchObservation(): Promise<{
   generated_at: string | null;
   fallback: boolean;
 }> {
-  const res = await fetch(`${getApiBase()}/api/observation`, {
-    headers: { "Content-Type": "application/json" },
+  const res = await apiFetch(`${getApiBase()}/api/observation`, {
     next: { revalidate: 3600 },
   });
   if (!res.ok) throw new Error(`Failed to fetch observation: ${res.status}`);
@@ -356,36 +408,8 @@ export async function getCsvStats(): Promise<{
     }>;
   };
 }> {
-  const res = await fetch(`${getApiBase()}/api/csv/stats`, {
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/csv/stats`);
   if (!res.ok) throw new Error(`Failed to fetch CSV stats: ${res.status}`);
-  return res.json();
-}
-
-/**
- * Load jobs from CSV into the database.
- */
-export async function loadJobsFromCsv(
-  limit: number = 100,
-  clearExisting: boolean = false
-): Promise<{
-  status: string;
-  message: string;
-  data: {
-    success: number;
-    errors: string[];
-    total: number;
-  };
-}> {
-  const res = await fetch(
-    `${getApiBase()}/api/csv/load-jobs?limit=${limit}&clear_existing=${clearExisting}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    }
-  );
-  if (!res.ok) throw new Error(`Failed to load CSV jobs: ${res.status}`);
   return res.json();
 }
 
@@ -450,9 +474,7 @@ export interface ActionRequired {
  * Get user profile for Q&A page.
  */
 export async function fetchQaProfile(): Promise<QaProfile> {
-  const res = await fetch(`${getApiBase()}/api/qa/profile`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/qa/profile`);
   if (!res.ok) throw new Error(`Failed to fetch Q&A profile: ${res.status}`);
   return res.json();
 }
@@ -464,9 +486,7 @@ export async function fetchRoleMatches(limit: number = 5): Promise<{
   matches: RoleMatch[];
   total_available: number;
 }> {
-  const res = await fetch(`${getApiBase()}/api/qa/matches?limit=${limit}`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/qa/matches?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to fetch role matches: ${res.status}`);
   return res.json();
 }
@@ -475,9 +495,7 @@ export async function fetchRoleMatches(limit: number = 5): Promise<{
  * Get market velocity for user's skills.
  */
 export async function fetchMarketVelocity(): Promise<MarketVelocity> {
-  const res = await fetch(`${getApiBase()}/api/qa/market-velocity`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/qa/market-velocity`);
   if (!res.ok) throw new Error(`Failed to fetch market velocity: ${res.status}`);
   return res.json();
 }
@@ -486,9 +504,7 @@ export async function fetchMarketVelocity(): Promise<MarketVelocity> {
  * Get network influence score.
  */
 export async function fetchNetworkInfluence(): Promise<NetworkInfluence> {
-  const res = await fetch(`${getApiBase()}/api/qa/network-influence`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/qa/network-influence`);
   if (!res.ok) throw new Error(`Failed to fetch network influence: ${res.status}`);
   return res.json();
 }
@@ -497,9 +513,7 @@ export async function fetchNetworkInfluence(): Promise<NetworkInfluence> {
  * Get action items for user profile.
  */
 export async function fetchActionRequired(): Promise<ActionRequired> {
-  const res = await fetch(`${getApiBase()}/api/qa/action-required`, {
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
-  });
+  const res = await apiFetch(`${getApiBase()}/api/qa/action-required`);
   if (!res.ok) throw new Error(`Failed to fetch action required: ${res.status}`);
   return res.json();
 }
@@ -511,9 +525,8 @@ export async function sendChatMessage(message: string): Promise<{
   response: string;
   timestamp: string;
 }> {
-  const res = await fetch(`${getApiBase()}/api/qa/chat`, {
+  const res = await apiFetch(`${getApiBase()}/api/qa/chat`, {
     method: "POST",
-    headers: { ...getUserIdHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
   if (!res.ok) throw new Error(`Failed to send chat message: ${res.status}`);
@@ -540,8 +553,7 @@ export interface ScraperStatus {
  * Fetch real-time progress status for all HN scrapers.
  */
 export async function fetchScraperStatus(): Promise<{ scrapers: ScraperStatus[] }> {
-  const res = await fetch(`${getApiBase()}/api/scrapers/status`, {
-    headers: { "Content-Type": "application/json" },
+  const res = await apiFetch(`${getApiBase()}/api/scrapers/status`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`Failed to fetch scraper status: ${res.status}`);

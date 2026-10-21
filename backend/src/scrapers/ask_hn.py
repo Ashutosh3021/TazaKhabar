@@ -5,8 +5,6 @@ Fetches top Ask HN stories and saves to news table.
 import logging
 from datetime import datetime
 
-from ..db.database import async_session
-from ..db.models import Report
 from .base_scraper import BaseScraper
 from .client import HNClient
 
@@ -32,19 +30,7 @@ class AskHNScraper(BaseScraper):
         """
         logger.info("Starting Ask HN scraper run")
         
-        # Create report entry
-        async with async_session() as session:
-            report = Report(
-                version="2",
-                items_collected=0,
-                new_items=0,
-                status="running",
-                scraper_name="ask_hn",
-            )
-            session.add(report)
-            await session.flush()
-            report_id = report.id
-            await session.commit()  # Commit so other sessions can see this report
+        await self.record_run("ask_hn", "running")
         
         try:
             # Fetch Ask HN story IDs
@@ -64,19 +50,7 @@ class AskHNScraper(BaseScraper):
             # Save to database
             total, new_count = await self.save_news(stories, "ask_hn")
             
-            # Update report
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.items_collected = total
-                    report.new_items = new_count
-                    report.status = "completed"
-                    await session.commit()
-                else:
-                    logger.warning(f"Could not find report {report_id} to update")
+            await self.record_run("ask_hn", "completed", total, new_count)
             
             logger.info(f"Ask HN scraper completed: {new_count} new items")
             return {"collected": total, "new": new_count}
@@ -84,13 +58,6 @@ class AskHNScraper(BaseScraper):
         except Exception as e:
             logger.error(f"Ask HN scraper failed: {e}")
             
-            async with async_session() as session:
-                from sqlalchemy import select
-                stmt = select(Report).where(Report.id == report_id)
-                result = await session.execute(stmt)
-                report = result.scalar_one_or_none()
-                if report:
-                    report.status = "failed"
-                    await session.commit()
+            await self.record_run("ask_hn", "failed")
             
             return {"collected": 0, "new": 0}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "@/components/Icon";
 import AppShell from "@/components/AppShell";
 import { useTaza } from "@/components/TazaContext";
 import { fetchDigest } from "@/lib/api";
@@ -9,7 +10,6 @@ import type { DigestItem } from "@/types";
 type Tab = "ALL" | "HIRING" | "LAYOFFS" | "FUNDING" | "SKILLS";
 
 function formatMonoDate(d: Date) {
-  // Brutal fixed-ish format; no locale dependence.
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -18,11 +18,12 @@ function formatMonoDate(d: Date) {
 
 export default function DigestPage() {
   const [tab, setTab] = useState<Tab>("ALL");
-  const { feedNewCount, refreshFeed, isFetchingFeed, feedVersion, savedJobs, toggleSavedJob } = useTaza();
+  const { feedNewCount, refreshFeed, isFetchingFeed, feedVersion, savedJobs, toggleSavedJob, userProfile } =
+    useTaza();
   const [digestItems, setDigestItems] = useState<DigestItem[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch personalized digest from API when version changes or tab changes
   useEffect(() => {
     let cancelled = false;
     async function loadDigest() {
@@ -37,21 +38,22 @@ export default function DigestPage() {
           setApiError(err instanceof Error ? err.message : "Failed to load digest");
           setDigestItems([]);
         }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }
     loadDigest();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [feedVersion]);
 
-  const featured = useMemo(
-    () => {
-      if (digestItems.length === 0) return null;
-      const shift = feedVersion % digestItems.length;
-      const rotated = [...digestItems.slice(shift), ...digestItems.slice(0, shift)];
-      return rotated.find((d) => d.featured) ?? rotated[0];
-    },
-    [feedVersion, digestItems],
-  );
+  const featured = useMemo(() => {
+    if (digestItems.length === 0) return null;
+    const shift = feedVersion % digestItems.length;
+    const rotated = [...digestItems.slice(shift), ...digestItems.slice(0, shift)];
+    return rotated.find((d) => d.featured) ?? rotated[0];
+  }, [feedVersion, digestItems]);
 
   const rotatedDigest = useMemo(() => {
     if (digestItems.length === 0) return [];
@@ -73,111 +75,97 @@ export default function DigestPage() {
   };
 
   const today = typeof window === "undefined" ? new Date() : new Date();
+  const trackLine =
+    userProfile.roles.length > 0
+      ? userProfile.roles.join(" | ")
+      : "General engineering track";
 
   return (
     <AppShell>
-      <div className="space-y-10">
+      <div className="-mx-5 md:-mx-12">
         {feedNewCount > 0 ? (
-          <button
-            type="button"
-            onClick={() => refreshFeed()}
-            className="-mx-6 md:-mx-20 h-[36px] w-[calc(100%+48px)] md:w-[calc(100%+160px)] bg-[#FF2D00] text-[#0E0E0E] flex items-center justify-center relative z-10"
-          >
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[2px]">
-              NEW DATA AVAILABLE — TAP TO REFRESH
-            </span>
-            <span className="absolute right-4 text-[#0E0E0E] font-mono">
-              ↑
-            </span>
+          <button type="button" onClick={() => refreshFeed()} className="strip" data-intro data-reveal="fade">
+            <span className="lamp lamp--ok" aria-hidden />
+            New data available, swap the feed
+            <span aria-hidden>↑</span>
           </button>
         ) : null}
+      </div>
 
-        <header className="pt-6">
-          <h1 className="font-serif text-4xl md:text-6xl font-black leading-tight">
-            Your{" "}
-            <span className="text-primary italic font-black">Digest.</span>
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="mono-label text-primary">03 / Briefing feed</p>
+          <h1 className="display mt-3 text-[clamp(2rem,1.3rem+2.8vw,3.25rem)]" data-split="lines" data-intro>
+            Your <span className="accent">digest.</span>
           </h1>
+          <p className="mono-label mt-4 text-dim-text">{trackLine}</p>
+        </div>
+        <p className="mono-data text-[13px] text-dim-text">{formatMonoDate(today)}</p>
+      </header>
 
-          <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.2em] mt-4">
-            SOFTWARE ENGINEER | 5 YRS EXP | MACHINE LEARNING
-          </p>
-          <p className="font-mono text-[10px] text-[#444] uppercase tracking-[0.2em] mt-2">
-            LAST UPDATED · 2H AGO
-          </p>
-        </header>
-
+      <div className="space-y-10">
         {featured && !isFetchingFeed ? (
-          <article className="brutalist-border bg-card-dark p-6 news-card-border">
+          <article className="panel panel--accent p-6 md:p-8" data-reveal="up">
             <div className="flex items-start justify-between gap-4">
-              <span className="mono-label text-[10px] text-primary uppercase tracking-[0.2em]">
-                TOP SIGNAL
-              </span>
-              <span className="mono-label text-[10px] text-dim-text uppercase">
-                {featured.source}
-              </span>
+              <span className="plate-label text-primary">Top signal</span>
+              <span className="mono-label text-dim-text">{featured.source}</span>
             </div>
-            <h2 className="font-serif text-3xl md:text-4xl font-black mt-6 leading-tight">
+            <h2 className="display mt-6 text-[clamp(1.5rem,1.2rem+2vw,2.5rem)] leading-tight">
               {featured.headline}
             </h2>
-            <div className="mt-5 flex items-center justify-between gap-4">
-              <span className="mono-label text-[10px] text-dim-text uppercase">
-                READ TIME · {featured.readTime}
+            <p className="mt-4 max-w-[68ch] text-[15px] leading-relaxed text-dim-text">
+              {featured.summary}
+            </p>
+            <div className="scribe mt-6 flex flex-wrap items-center justify-between gap-4 pt-4">
+              <span className="mono-label text-dim-text">
+                Read time · {featured.readTime}
               </span>
               <div className="flex items-center gap-3">
                 {featured.match_percentage !== undefined && featured.match_percentage > 0 && (
-                  <span className="mono-label text-[10px] px-2 py-1 bg-primary/10 border border-primary/40 text-primary uppercase tracking-[0.05em]">
-                    {featured.match_percentage}% MATCH
+                  <span className="mono-label border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
+                    {featured.match_percentage}% match
                   </span>
                 )}
-                <span className="mono-label text-[10px] text-primary uppercase">
-                  {featured.category}
-                </span>
+                <span className="mono-label text-primary">{featured.category}</span>
               </div>
             </div>
           </article>
         ) : null}
 
         <section className="space-y-6">
-          <div className="flex flex-wrap gap-2">
-            {(["ALL", "HIRING", "LAYOFFS", "FUNDING", "SKILLS"] as Tab[]).map(
-              (t) => {
-                const isActive = tab === t;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTab(t)}
-                    className={`mono-label text-[11px] uppercase tracking-[0.05em] px-5 py-3 border border-border-dark transition-colors ${
-                      isActive
-                        ? "active-tab border-border-dark text-primary"
-                        : "bg-background-dark text-dim-text hover:bg-primary/10 hover:text-neutral-beige"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                );
-              },
-            )}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Digest channels">
+            {(["ALL", "HIRING", "LAYOFFS", "FUNDING", "SKILLS"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={tab === t}
+                onClick={() => setTab(t)}
+                className="tab"
+              >
+                {t}
+              </button>
+            ))}
           </div>
 
-          {isFetchingFeed ? (
-            <div className="space-y-4">
+          {isFetchingFeed || loading ? (
+            <div className="h-[360px] space-y-4 overflow-hidden">
               {[0, 1].map((i) => (
                 <FeedNewsSkeleton key={i} />
               ))}
             </div>
           ) : apiError ? (
-            <div className="brutalist-border bg-card-dark p-6 text-center">
-              <p className="mono-label text-[11px] text-primary uppercase tracking-[0.1em] mb-2">API ERROR</p>
-              <p className="mono-label text-[10px] text-dim-text">{apiError}</p>
+            <div className="panel panel--accent flex min-h-[360px] flex-col items-center justify-center p-6 text-center">
+              <p className="mono-label text-primary">Feed fault</p>
+              <p className="mono-label mt-2 text-dim-text">{apiError}</p>
             </div>
           ) : list.length === 0 && digestItems.length === 0 ? (
-            <div className="brutalist-border bg-card-dark p-8 text-center">
-              <p className="mono-label text-[11px] text-dim-text uppercase tracking-[0.2em] mb-2">
-                NO DIGEST ITEMS YET
+            <div className="panel flex min-h-[280px] flex-col items-center justify-center px-6 py-12 text-center">
+              <p className="mono-data text-[clamp(3rem,2rem+6vw,5rem)] leading-none text-primary">00</p>
+              <p className="display mt-4 text-[clamp(1.25rem,1rem+1.5vw,1.75rem)]">
+                Digest empty
               </p>
-              <p className="mono-label text-[10px] text-dim-text">
-                The digest populates after the HN scrapers run and news items get AI summaries.
+              <p className="mt-3 max-w-[44ch] text-[15px] leading-relaxed text-dim-text">
+                The feed populates after the HN scrapers run and each item gets its summary.
                 Check back after the next scrape cycle.
               </p>
             </div>
@@ -226,55 +214,52 @@ function DigestRow({
   };
 
   return (
-    <article className="brutalist-border bg-card-dark p-6 space-y-4">
+    <article className="panel space-y-4 p-5 md:p-6" data-reveal="up">
       <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <p className="mono-label text-[10px] text-dim-text uppercase tracking-[0.2em]">
-            {item.source}
-          </p>
-          <h3 className="font-serif text-2xl font-black leading-tight">
+        <div className="min-w-0 space-y-2">
+          <p className="mono-label text-dim-text">{item.source}</p>
+          <h3 className="display text-[clamp(1.1rem,1rem+0.8vw,1.4rem)] leading-tight">
             {item.headline}
           </h3>
-          <p className="font-mono text-[13px] text-dim-text leading-relaxed">
-            {item.summary}
-          </p>
+          <p className="text-[14px] leading-relaxed text-dim-text">{item.summary}</p>
         </div>
 
-        <div className="flex flex-col gap-2 items-end">
+        <div className="flex shrink-0 flex-col items-end gap-2">
           <button
             type="button"
             onClick={share}
-            className="text-dim-text hover:text-primary transition-colors"
+            className="tab !border-transparent !p-2 text-dim-text hover:text-primary"
             aria-label="Share"
           >
-            <span className="material-symbols-outlined text-[22px]">share</span>
+            <Icon name="share" className="text-[20px]" aria-hidden />
           </button>
           <button
             type="button"
             onClick={onToggleBookmark}
-            className="text-dim-text hover:text-primary transition-colors"
+            className="tab !border-transparent !p-2 text-dim-text hover:text-primary"
+            aria-pressed={bookmarked}
             aria-label={bookmarked ? "Unbookmark" : "Bookmark"}
           >
-            <span className="material-symbols-outlined text-[22px]">
-              {bookmarked ? "bookmark" : "bookmark_border"}
-            </span>
+            <Icon
+              name={bookmarked ? "bookmark" : "bookmark_border"}
+              className="text-[20px]"
+              aria-hidden
+            />
           </button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <span className="mono-label text-[10px] px-2 py-1 border border-border-dark text-dim-text uppercase tracking-[0.05em]">
+      <div className="scribe flex flex-wrap items-center justify-between gap-4 pt-4">
+        <span className="mono-label border border-border-dark px-2 py-1 text-dim-text">
           {item.category}
         </span>
         <div className="flex items-center gap-3">
           {item.match_percentage !== undefined && item.match_percentage > 0 && (
-            <span className="mono-label text-[10px] px-2 py-1 bg-primary/10 border border-primary/40 text-primary uppercase tracking-[0.05em]">
-              {item.match_percentage}% MATCH
+            <span className="mono-label border border-primary/40 bg-primary/10 px-2 py-1 text-primary">
+              {item.match_percentage}% match
             </span>
           )}
-          <span className="mono-label text-[10px] text-dim-text uppercase">
-            {item.readTime}
-          </span>
+          <span className="mono-label text-dim-text">{item.readTime}</span>
         </div>
       </div>
     </article>
@@ -283,43 +268,20 @@ function DigestRow({
 
 function FeedNewsSkeleton() {
   return (
-    <article className="brutalist-border bg-card-dark p-6 news-card-border">
-      <div className="flex items-start justify-between gap-4">
-        <div className="tazakhabar-skeleton-bar w-[96px] h-[18px]" />
-        <div className="tazakhabar-skeleton-bar w-[120px] h-[14px]" />
-      </div>
-      <div className="mt-6 space-y-3">
-        <div className="tazakhabar-skeleton-bar w-[75%] h-[18px]" />
-        <div className="tazakhabar-skeleton-bar w-[60%] h-[14px]" />
-        <div className="tazakhabar-skeleton-bar w-[55%] h-[14px]" />
-      </div>
-      <div className="mt-5 flex items-center justify-between gap-4">
-        <div className="tazakhabar-skeleton-bar w-[120px] h-[16px]" />
-        <div className="tazakhabar-skeleton-bar w-[80px] h-[16px]" />
-      </div>
-    </article>
-  );
-}
-
-function DigestRowSkeleton() {
-  return (
-    <article className="brutalist-border bg-card-dark p-6 space-y-4">
+    <article className="panel space-y-4 p-5 md:p-6" aria-hidden>
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-3">
-          <div className="tazakhabar-skeleton-bar w-[140px] h-[12px]" />
-          <div className="tazakhabar-skeleton-bar w-[92%] h-[16px]" />
-          <div className="tazakhabar-skeleton-bar w-[90%] h-[12px]" />
+          <div className="tk-skel h-3 w-[96px]" />
+          <div className="tk-skel h-5 w-[280px] max-w-full" />
         </div>
-        <div className="space-y-3 flex flex-col items-end">
-          <div className="tazakhabar-skeleton-bar w-[22px] h-[22px] rounded-none" />
-          <div className="tazakhabar-skeleton-bar w-[22px] h-[22px] rounded-none" />
-        </div>
+        <div className="tk-skel h-5 w-5" />
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <div className="tazakhabar-skeleton-bar w-[90px] h-[18px]" />
-        <div className="tazakhabar-skeleton-bar w-[60px] h-[18px]" />
+      <div className="tk-skel h-4 w-[92%]" />
+      <div className="tk-skel h-4 w-[70%]" />
+      <div className="flex items-center justify-between gap-4 pt-2">
+        <div className="tk-skel h-6 w-[90px]" />
+        <div className="tk-skel h-6 w-[70px]" />
       </div>
     </article>
   );
 }
-

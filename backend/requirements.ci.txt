@@ -1,0 +1,13 @@
+# Dependencies for the GitHub Actions scrape job.
+# Deliberately small: no torch, no FastAPI, no database driver. The job only
+# needs to fetch from HN, write to Pyronites and call the LLM.
+httpx>=0.28.1,<1.0.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+python-dotenv==1.0.1
+pydantic>=2.11.2,<3.0.0
+pydantic-settings==2.3.0
+tenacity==8.2.3
+groq==0.14.0
+openrouter==0.7.11
+numpy>=1.26,<3

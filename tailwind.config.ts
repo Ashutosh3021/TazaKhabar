@@ -8,6 +8,7 @@ const config: Config = {
   ],
   darkMode: "class",
   theme: {
+    // Owner constraint: border radius never exceeds 1px. Enforced at 0.
     borderRadius: {
       DEFAULT: "0px",
       sm: "0px",
@@ -15,35 +16,32 @@ const config: Config = {
       lg: "0px",
       xl: "0px",
       "2xl": "0px",
+      "3xl": "0px",
       full: "0px",
     },
     borderWidth: {
       DEFAULT: "1px",
       "1.5": "1.5px",
+      "2": "2px",
+      "3": "3px",
     },
     extend: {
       colors: {
         primary: "#FF2D00",
-        "background-dark": "#0E0E0E",
-        "card-dark": "#1a1a1a",
-        "border-dark": "#1e1e1e",
-        "neutral-border": "#2a2a2a",
+        signal: "#00FF41",
+        "background-dark": "#0D0E0D",
+        "card-dark": "#141614",
+        "card-hi": "#191C19",
+        "border-dark": "#2A2D2B",
+        "neutral-border": "#2A2D2B",
         "neutral-beige": "#F0EDE6",
-        "dim-text": "#8c8c8c",
+        "dim-text": "#8C8C8C",
         "success-glow": "#00FF41",
-        "selected-bg": "#140000",
+        "selected-bg": "#1A0F0C",
       },
       fontFamily: {
-        sans: ["var(--font-work-sans)"],
-        serif: ["var(--font-playfair-display)"],
-        mono: ["var(--font-ibm-plex-mono)"],
-        "mono-jetbrains": ["var(--font-jetbrains-mono)"],
-        "space-grotesk": ["var(--font-space-grotesk)"],
-      },
-      backgroundImage: {
-        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
-        "gradient-conic":
-          "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
+        sans: ["var(--font-space-grotesk)"],
+        mono: ["var(--font-plex-mono)"],
       },
     },
   },

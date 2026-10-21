@@ -1,0 +1,192 @@
+{
+  "url": "http://127.0.0.1:4400/setup/1",
+  "errors": [
+    "[desktop] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[desktop] [TazaKhabar] Failed to fetch Supabase health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:781)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:3100)\n    at http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:9883",
+    "[keyboard] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[keyboard] [TazaKhabar] Failed to fetch Supabase health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:781)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:3100)\n    at http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:9883",
+    "[hover] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[hover] [TazaKhabar] Failed to fetch Supabase health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:781)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:3100)\n    at http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:9883",
+    "[mobile] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[mobile] [TazaKhabar] Failed to fetch Supabase health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:781)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:3100)\n    at http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:9883",
+    "[reduced] Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "[reduced] [TazaKhabar] Failed to fetch Supabase health: TypeError: Failed to fetch\n    at c (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:781)\n    at d (http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:3100)\n    at http://127.0.0.1:4400/_next/static/chunks/849-26b043e0b7170ee6.js:1:9883"
+  ],
+  "failed": [
+    "[desktop] http://localhost:8000/health/supabase net::ERR_CONNECTION_REFUSED",
+    "[keyboard] http://localhost:8000/health/supabase net::ERR_CONNECTION_REFUSED",
+    "[hover] http://localhost:8000/health/supabase net::ERR_CONNECTION_REFUSED",
+    "[mobile] http://localhost:8000/health/supabase net::ERR_CONNECTION_REFUSED",
+    "[reduced] http://localhost:8000/health/supabase net::ERR_CONNECTION_REFUSED"
+  ],
+  "desktop": {
+    "loadMs": 493,
+    "loaderMs": 3066,
+    "settledMs": 4860,
+    "vitals": {
+      "lcpMs": 540,
+      "lcpElement": "div.split-line",
+      "cls": 0
+    },
+    "height": 900,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "What roles are you targeting?"
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Calibration wizard | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    },
+    "nav": {
+      "href": "/auth",
+      "scrollYAfter": 0,
+      "title": "Access terminal | TazaKhabar"
+    },
+    "idleMotion": false,
+    "idleAt": null
+  },
+  "mobile": {
+    "throttled": true,
+    "loadMs": 2546,
+    "loaderMs": 5588,
+    "settledMs": 7685,
+    "vitals": {
+      "lcpMs": 1816,
+      "lcpElement": "p.mono-label",
+      "cls": 0
+    },
+    "height": 1048,
+    "overflowX": false,
+    "offenders": [],
+    "h1": [
+      "What roles are\nyou targeting?"
+    ],
+    "smallTargets": [],
+    "glHidden": [],
+    "title": "Calibration wizard | TazaKhabar",
+    "glOn": false,
+    "scrollFps": {
+      "fps": 60,
+      "worstFrameMs": 17
+    }
+  },
+  "files": [
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-00-firstpaint.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-02-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-03-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-04-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-05-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-06-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-07-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-90-transition-a.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-90-transition-b.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-90-transition-c.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-91-after-nav.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\d-92-back.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\k-01-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\k-02-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\k-03-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\k-04-focus.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-01-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-01-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-02-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-02-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-03-rest.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\h-03-hover.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-02-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-03-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-04-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-05-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\m-06-scroll.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\r-01-hero.png",
+    "C:\\Users\\ashut\\Downloads\\TazaKhabar\\.shots\\r-02-mid.png"
+  ],
+  "notes": [
+    "desktop FPS runs headless on a software GPU: treat it as a floor, not a measurement of real hardware",
+    "mobile runs at 4x CPU slowdown on slow 4G: mobile.vitals and mobile.scrollFps are the numbers that count",
+    "loadMs: ms from navigation to the load event, null if it had not fired after 30 s (desktop) or 60 s (phone); a heavy page takes long, while visitors see content at vitals.lcpMs. loaderMs: ms until the #loader ended, null when the page has none",
+    "settledMs: ms from navigation by which the first screen stopped changing, never before the fixed wait. null: still changing at the cap, either a long intro or continuous motion (a live shader, video); d-01-hero / m-01-hero tell which. reduced.moving: the screen was still changing 1.5 s after load with reduced motion on"
+  ],
+  "keyboard": {
+    "stops": [
+      "a \"SKIP TO CONTENT\"",
+      "button \"FRONTEND DEV\"",
+      "button \"BACKEND DEV\"",
+      "button \"FULL STACK\"",
+      "button \"DATA ENGINEER\"",
+      "button \"ML ENGINEER\"",
+      "button \"DEVOPS/SRE\"",
+      "button \"PRODUCT MANAGER\"",
+      "button \"MOBILE DEV\"",
+      "button \"QA ENGINEER\"",
+      "button \"SECURITY\"",
+      "button \"CLOUD ARCHITECT\""
+    ],
+    "skipLinkFirst": true,
+    "noVisibleFocus": [],
+    "invisibleFocus": [],
+    "stuck": false
+  },
+  "hover": {
+    "targets": [
+      {
+        "shot": "h-01",
+        "label": "button \"Frontend Dev\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      },
+      {
+        "shot": "h-02",
+        "label": "button \"Continue\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      },
+      {
+        "shot": "h-03",
+        "label": "a \"Back\"",
+        "interactive": true,
+        "primary": true,
+        "react": "moves",
+        "changed": [
+          "color",
+          "borderColor",
+          "textDecorationColor",
+          "backgroundSize"
+        ]
+      }
+    ],
+    "noHoverChange": [],
+    "colorOnly": [],
+    "covered": [],
+    "cursorFollower": true
+  },
+  "reduced": {
+    "hiddenText": 0,
+    "moving": false
+  },
+  "a11y": {
+    "violations": [],
+    "serious": 0,
+    "contrastNeedsReview": 20
+  }
+}

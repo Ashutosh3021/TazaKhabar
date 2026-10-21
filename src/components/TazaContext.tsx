@@ -4,7 +4,7 @@ import React, { createContext, useContext } from "react";
 import type { ActiveFilters, UserProfile } from "@/types";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { jobs as mockJobs } from "@/lib/mockData"; // DEPRECATED — used only for default saved jobs fallback
-import { fetchJobs, fetchNews, fetchSession, signOut } from "@/lib/api";
+import { fetchJobs, fetchNews, fetchSession, setSessionHint, signOut } from "@/lib/api";
 import { useHealthCheck } from "@/lib/useHealthCheck";
 
 export type TazaSession = {
@@ -104,11 +104,17 @@ export function TazaProvider({ children }: { children: React.ReactNode }) {
   const refreshSession = React.useCallback(async () => {
     try {
       const result = await fetchSession();
-      setSession(
-        result.authenticated
-          ? { id: result.user.id, email: result.user.email }
-          : null
-      );
+      if (result.authenticated) {
+        // The route gate reads a first-party hint; the real cookie is
+        // httpOnly and lives on the API domain.
+        setSessionHint();
+        setSession({
+          id: result.user.id,
+          email: result.user.email,
+        });
+      } else {
+        setSession(null);
+      }
     } catch {
       setSession(null);
     } finally {

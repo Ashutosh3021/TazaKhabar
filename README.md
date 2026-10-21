@@ -56,12 +56,17 @@ door.
 
 ## How it works
 
-**Accounts and sessions.** Sign up or sign in with email and password on the
-`/auth` terminal. The backend authenticates against Pyronites and hands the
-browser an httpOnly, signed session cookie. Every private endpoint
-(`/api/profile`, `/api/resume/analyse`, `/api/qa/chat`, …) re-validates that
-session on each request. `src/middleware.ts` redirects signed-out visitors away
-from the private routes; the API is the real gate.
+**Accounts and sessions.** There are no passwords. Sign in with Google or GitHub
+on the `/auth` terminal: the API is the OAuth client, it redirects the browser
+to the provider, handles the callback, links the identity to an `accounts` row
+and hands the browser an httpOnly, signed session cookie. Every private
+endpoint (`/api/profile`, `/api/resume/analyse`, `/api/qa/chat`, …) verifies
+that signature on each request. `src/middleware.ts` sends signed-out visitors
+to `/auth`; the API is the real gate.
+
+The app does not use the Pyronites OAuth endpoints: they hard-code their own
+callback URL and hand the session to that host with a host-only cookie, which
+this API (a different host) cannot read.
 
 **Freshness.** There is no global report swap any more. Each user has a
 `feed_last_seen_at` marker; the badge counts jobs and news scraped since that
@@ -156,6 +161,10 @@ Then the environment variables:
 | `AUTH_SESSION_SECRET` | any long random string | yes |
 | `AUTH_COOKIE_SECURE` | `true` | yes |
 | `AUTH_COOKIE_SAMESITE` | `none` (the frontend is on another site) | yes |
+| `API_PUBLIC_URL` | the public API URL, the OAuth callback target | yes |
+| `FRONTEND_URL` | the frontend URL, where the browser lands after sign in | yes |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google web app credentials | yes |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth app credentials | yes |
 | `ALLOWED_ORIGINS` | the exact frontend origin, e.g. `https://tazakhabar.vercel.app` | yes |
 | `ADMIN_TOKEN` | a random string, guards the write endpoints | yes |
 | `GROQ_API_KEY` | your Groq key, for resume scoring and the career bot | recommended |
@@ -207,11 +216,11 @@ Set `NEXT_PUBLIC_API_URL` to the Render URL.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/api/auth/signup` | — | create an account (falls back to sign in) |
-| POST | `/api/auth/login` | — | email + password |
+| GET | `/api/auth/providers` | — | which sign-in methods are configured |
+| GET | `/api/auth/oauth/{provider}` | — | start the Google or GitHub flow |
+| GET | `/api/auth/oauth/{provider}/callback` | — | provider callback, sets the session |
 | POST | `/api/auth/logout` | — | drop the session |
 | GET | `/api/auth/me` | — | resolve the current session |
-| POST | `/api/auth/password/forgot` | — | request a reset email |
 | GET | `/api/jobs` | optional | job feed, filters and pagination |
 | GET | `/api/news` | — | news feed |
 | GET | `/api/trends` | — | keyword trends, observation, predictions |
@@ -235,7 +244,8 @@ id, so changing a header no longer resets a limit.
 
 | Table | Holds |
 |---|---|
-| `profiles` | user profile, ATS results, `feed_last_seen_at` (id = Pyronites user id) |
+| `accounts` | OAuth identities (provider, provider id, email) |
+| `profiles` | user profile, ATS results, `feed_last_seen_at` (id = account id) |
 | `jobs` | scraped job listings |
 | `news` | scraped news items |
 | `trends` | weekly keyword counts |
@@ -246,8 +256,19 @@ id, so changing a header no longer resets a limit.
 | `notifications` | queued job match alerts |
 | `scraper_state` | scraper bookkeeping (last thread id, last run) |
 
-`users` is a reserved word on Pyronites, which is why the profile table is
-called `profiles`.
+`users` is a reserved word on Pyronites, which is why the account table is
+called `accounts` and the profile table `profiles`.
+
+### Registering the OAuth apps
+
+- **Google**: Cloud Console → APIs & Services → Credentials → Create → Web
+  application. Authorized redirect URI:
+  `https://tazakhabar-backend.onrender.com/api/auth/oauth/google/callback`.
+- **GitHub**: Settings → Developer settings → OAuth Apps → New OAuth App.
+  Authorization callback URL:
+  `https://tazakhabar-backend.onrender.com/api/auth/oauth/github/callback`.
+
+Put the client id and secret in the Render environment variables.
 
 ---
 

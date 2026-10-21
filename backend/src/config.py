@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     PYRONITES_PROJECT_ID: str = ""
     PYRONITES_TIMEOUT_SEC: float = 30.0
 
-    # Browser session: httpOnly cookie that carries the Pyronites session.
+    # Browser session: httpOnly cookie that carries the signed session.
     AUTH_SESSION_COOKIE: str = "tk_session"
     AUTH_SESSION_SECRET: str = ""
     AUTH_SESSION_TTL_SEC: int = 60 * 60 * 24 * 14
@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # development on http://localhost needs Lax without Secure.
     AUTH_COOKIE_SECURE: bool = True
     AUTH_COOKIE_SAMESITE: str = "none"
+
+    # Public URLs. API_PUBLIC_URL is where the OAuth provider sends the
+    # browser back to, FRONTEND_URL is where we send the user after sign in.
+    API_PUBLIC_URL: str = ""
+    FRONTEND_URL: str = ""
+
+    # OAuth clients for Google and GitHub (the API is the OAuth client).
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
 
     # Guards the write endpoints (scrape trigger, CSV load, embeddings backfill).
     ADMIN_TOKEN: str = ""

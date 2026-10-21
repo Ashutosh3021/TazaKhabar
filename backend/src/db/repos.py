@@ -115,6 +115,98 @@ async def all_profiles() -> List[Dict[str, Any]]:
     return [_profile_row(row) for row in rows]
 
 
+# ---------------------------------------------------------------------------
+# accounts (OAuth identities: Google, GitHub)
+# ---------------------------------------------------------------------------
+
+
+def _account_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "provider": row.get("provider"),
+        "provider_id": row.get("provider_id"),
+        "email": row.get("email"),
+        "name": row.get("name"),
+        "avatar_url": row.get("avatar_url"),
+        "email_verified": _bool(row.get("email_verified")),
+        "created_at": _iso(row.get("created_at")),
+        "last_login_at": _iso(row.get("last_login_at")),
+    }
+
+
+async def get_account(account_id: str) -> Optional[Dict[str, Any]]:
+    rows = await get_pyro().sql(
+        f"SELECT * FROM \"accounts\" WHERE id = {sql_literal(account_id)} LIMIT 1"
+    )
+    return _account_row(rows[0]) if rows else None
+
+
+async def upsert_account(
+    provider: str,
+    provider_id: str,
+    email: str,
+    name: str = "",
+    avatar_url: str = "",
+    email_verified: bool = False,
+) -> Dict[str, Any]:
+    """
+    Find or create the account for an OAuth identity.
+
+    The same provider identity always maps to the same account. An account is
+    also linked by email when the provider verified that email, which is what
+    keeps one person to one account across providers.
+    """
+    now = now_iso()
+
+    existing = await get_pyro().sql(
+        "SELECT * FROM \"accounts\" WHERE provider = "
+        f"{sql_literal(provider)} AND provider_id = {sql_literal(provider_id)} LIMIT 1"
+    )
+
+    if existing:
+        row = existing[0]
+        await get_pyro().sql(
+            "UPDATE \"accounts\" SET email = "
+            f"{sql_literal(email)}, name = {sql_literal(name or row.get('name') or '')}, "
+            f"avatar_url = {sql_literal(avatar_url or row.get('avatar_url') or '')}, "
+            f"last_login_at = {sql_literal(now)} WHERE id = {sql_literal(row['id'])}"
+        )
+        return await get_account(row["id"]) or {}
+
+    if email and email_verified:
+        by_email = await get_pyro().sql(
+            f"SELECT id FROM \"accounts\" WHERE email = {sql_literal(email)} LIMIT 1"
+        )
+        if by_email:
+            account_id = by_email[0]["id"]
+            await get_pyro().sql(
+                "UPDATE \"accounts\" SET provider = "
+                f"{sql_literal(provider)}, provider_id = {sql_literal(provider_id)}, "
+                f"name = {sql_literal(name)}, avatar_url = {sql_literal(avatar_url)}, "
+                f"last_login_at = {sql_literal(now)} WHERE id = {sql_literal(account_id)}"
+            )
+            return await get_account(account_id) or {}
+
+    account_id = uuid.uuid4().hex
+    row = {
+        "id": account_id,
+        "provider": provider,
+        "provider_id": provider_id,
+        "email": email,
+        "name": name,
+        "avatar_url": avatar_url,
+        "email_verified": bool(email_verified),
+        "created_at": now,
+        "last_login_at": now,
+    }
+    columns = ", ".join(sql_ident(c) for c in row)
+    values = ", ".join(sql_literal(row[c]) for c in row)
+    await get_pyro().exec(
+        f"INSERT INTO \"accounts\" ({columns}) VALUES ({values})"
+    )
+    return await get_account(account_id) or {}
+
+
 async def job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
     rows = await get_pyro().sql(
         f"SELECT * FROM \"jobs\" WHERE id = {sql_literal(job_id)} LIMIT 1"

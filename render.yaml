@@ -31,6 +31,20 @@ services:
         value: "true"
       - key: AUTH_COOKIE_SAMESITE
         value: "none"
+      # Public URLs: the OAuth callback target and the post sign-in landing.
+      - key: API_PUBLIC_URL
+        value: https://tazakhabar-backend.onrender.com
+      - key: FRONTEND_URL
+        value: https://tazakhabar.vercel.app
+      # OAuth clients for Google and GitHub (no passwords anywhere).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
       # Exact frontend origin, no wildcards.
       - key: ALLOWED_ORIGINS
         sync: false

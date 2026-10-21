@@ -30,6 +30,7 @@ from src.api import (  # noqa: E402
     qa_router,
     trends_router,
 )
+from src.auth_session import issue_session  # noqa: E402
 
 SMOKE_EMAIL = f"tazakhabar-api-{uuid.uuid4().hex[:8]}@example.com"
 SMOKE_PASSWORD = "TazaKhabar-Smoke-2026"
@@ -86,20 +87,16 @@ def main() -> int:
             f"HTTP {response.status_code}",
         )
 
-        # --- sign in --------------------------------------------------------
-        response = client.post(
-            "/api/auth/signup",
-            json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
-        )
+        # --- sign in (the session is issued by the OAuth callback) ---------
+        user_id = "test-account-0001"
+        client.cookies.set("tk_session", issue_session(user_id, SMOKE_EMAIL))
+
+        response = client.get("/api/auth/me")
         check(
-            "signup works",
+            "me returns the signed-in user",
             response.status_code == 200 and response.json().get("authenticated"),
             f"HTTP {response.status_code}",
         )
-
-        response = client.get("/api/auth/me")
-        user_id = (response.json().get("user") or {}).get("id")
-        check("me returns the user id", bool(user_id), f"id={user_id}")
 
         # --- profile round trip ---------------------------------------------
         response = client.post(
@@ -157,6 +154,7 @@ def main() -> int:
         # --- logout ---------------------------------------------------------
         response = client.post("/api/auth/logout")
         check("logout works", response.status_code == 200, f"HTTP {response.status_code}")
+        client.cookies.clear()
 
         response = client.get("/api/profile")
         check(

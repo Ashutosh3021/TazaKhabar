@@ -61,16 +61,6 @@ export interface AuthResult {
   message?: string;
 }
 
-async function readAuthError(res: Response, fallback: string): Promise<string> {
-  const error = await res.json().catch(() => null);
-  const detail = error?.detail;
-  if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object" && typeof detail.error === "string") {
-    return detail.error;
-  }
-  return fallback;
-}
-
 /**
  * First-party hint cookie, set on the frontend domain after a sign in.
  *
@@ -81,41 +71,41 @@ async function readAuthError(res: Response, fallback: string): Promise<string> {
  */
 export const SESSION_HINT_COOKIE = "tk_hint";
 
-function setSessionHint() {
+export function setSessionHint() {
   if (typeof document === "undefined") return;
   const maxAge = 60 * 60 * 24 * 14;
   document.cookie = `${SESSION_HINT_COOKIE}=1; path=/; max-age=${maxAge}; SameSite=Lax`;
 }
 
-function clearSessionHint() {
+export function clearSessionHint() {
   if (typeof document === "undefined") return;
   document.cookie = `${SESSION_HINT_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
 }
 
-/** Create an account, or sign in when the account already exists. */
-export async function signUp(email: string, password: string): Promise<AuthResult> {
-  const res = await apiFetch(`${getApiBase()}/api/auth/signup`, {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    throw new Error(await readAuthError(res, "Sign up failed"));
+export type AuthProvider = {
+  id: string;
+  name: string;
+  configured: boolean;
+};
+
+/** Which sign-in methods the backend has configured. */
+export async function fetchAuthProviders(): Promise<AuthProvider[]> {
+  try {
+    const res = await apiFetch(`${getApiBase()}/api/auth/providers`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return (body.providers ?? []) as AuthProvider[];
+  } catch {
+    return [];
   }
-  setSessionHint();
-  return res.json();
 }
 
-/** Sign in with email and password. */
-export async function signIn(email: string, password: string): Promise<AuthResult> {
-  const res = await apiFetch(`${getApiBase()}/api/auth/login`, {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    throw new Error(await readAuthError(res, "Sign in failed"));
-  }
-  setSessionHint();
-  return res.json();
+/**
+ * Send the browser to the backend, which starts the Google or GitHub flow.
+ * The backend comes back to /auth/callback once the provider is done.
+ */
+export function startOAuth(provider: "google" | "github") {
+  window.location.assign(`${getApiBase()}/api/auth/oauth/${provider}`);
 }
 
 /** Drop the session on the backend and in the browser. */
@@ -133,19 +123,6 @@ export async function fetchSession(): Promise<AuthResult> {
   } catch {
     return { authenticated: false, user: { id: null, email: null, authenticated: false } };
   }
-}
-
-/** Ask the backend to email a password reset link. */
-export async function requestPasswordReset(email: string): Promise<string> {
-  const res = await apiFetch(`${getApiBase()}/api/auth/password/forgot`, {
-    method: "POST",
-    body: JSON.stringify({ email }),
-  });
-  if (!res.ok) {
-    throw new Error(await readAuthError(res, "Could not send the reset email"));
-  }
-  const body = await res.json();
-  return body.message ?? "If that address has an account, a reset link is on its way.";
 }
 
 /**

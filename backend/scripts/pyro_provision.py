@@ -45,6 +45,21 @@ TABLES: Dict[str, Dict[str, Any]] = {
             {"name": "created_at", "type": "DATETIME"},
         ],
     },
+    # "users" is reserved on Pyronites, hence "accounts".
+    "accounts": {
+        "primary_key": "id",
+        "columns": [
+            {"name": "id", "type": "TEXT"},
+            {"name": "provider", "type": "TEXT"},
+            {"name": "provider_id", "type": "TEXT"},
+            {"name": "email", "type": "TEXT"},
+            {"name": "name", "type": "TEXT"},
+            {"name": "avatar_url", "type": "TEXT"},
+            {"name": "email_verified", "type": "BOOLEAN"},
+            {"name": "created_at", "type": "DATETIME"},
+            {"name": "last_login_at", "type": "DATETIME"},
+        ],
+    },
     "jobs": {
         "primary_key": "id",
         "columns": [

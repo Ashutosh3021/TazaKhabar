@@ -1,48 +1,49 @@
 """
-Authentication endpoints backed by Pyronites.
+Authentication endpoints.
 
-POST /api/auth/signup  - create a Pyronites account (falls back to login)
-POST /api/auth/login   - email + password
-POST /api/auth/logout  - drop the session
-GET  /api/auth/me      - resolve the current session
-POST /api/auth/password/forgot - trigger a Pyronites reset email
+Sign in happens through Google or GitHub. The API is the OAuth client: it
+redirects the browser to the provider, handles the callback, links the
+identity to an account row and hands out a signed session cookie.
 
-The browser receives an httpOnly cookie; the Pyronites key never leaves the
-server.
+There is no password endpoint: no password is ever stored, sent or accepted.
 """
 from __future__ import annotations
 
+import logging
+import secrets
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
-from src.auth_session import (
-    PyroAuthError,
-    decode_session,
-    encode_session,
-    get_pyro_auth,
-    user_id,
-)
+from src.auth_session import issue_session, read_session, read_state, sign_state
 from src.config import settings
+from src.db import repos
+from src.services.oauth_service import (
+    PROVIDERS,
+    OAuthError,
+    build_authorize_url,
+    exchange_code,
+    fetch_profile,
+    get_provider,
+    is_configured,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-
-
-class Credentials(BaseModel):
-    email: str = Field(pattern=EMAIL_PATTERN, max_length=320)
-    password: str = Field(min_length=8, max_length=256)
-
-
-class ForgotPassword(BaseModel):
-    email: str = Field(pattern=EMAIL_PATTERN, max_length=320)
+STATE_COOKIE = "tk_oauth_state"
+STATE_TTL_SEC = 600
 
 
 class SessionUser(BaseModel):
     id: Optional[str] = None
     email: Optional[str] = None
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    provider: Optional[str] = None
     authenticated: bool = False
 
 
@@ -52,121 +53,158 @@ class AuthResponse(BaseModel):
     message: Optional[str] = None
 
 
-def _public_user(payload: Dict[str, Any]) -> SessionUser:
-    email = payload.get("email") if isinstance(payload, dict) else None
-    nested = payload.get("user") if isinstance(payload, dict) else None
-    if isinstance(nested, dict):
-        email = email or nested.get("email")
-    return SessionUser(id=user_id(payload), email=email, authenticated=True)
+def _session_user(session: Dict[str, Any]) -> SessionUser:
+    return SessionUser(
+        id=session.get("uid"),
+        email=session.get("email"),
+        authenticated=True,
+    )
 
 
-def _set_session_cookie(response: Response, cookie_header: str) -> None:
+def _redirect_uri(provider_id: str) -> str:
+    """Where the provider sends the browser back to."""
+    return f"{settings.API_PUBLIC_URL.rstrip('/')}/api/auth/oauth/{provider_id}/callback"
+
+
+def _frontend_url(path: str = "") -> str:
+    base = settings.FRONTEND_URL.rstrip("/")
+    return f"{base}{path}" if path else base
+
+
+@router.get("/providers")
+async def list_providers() -> dict:
+    """Which sign-in methods are configured on this deployment."""
+    return {
+        "providers": [
+            {"id": provider.id, "name": provider.name, "configured": is_configured(provider)}
+            for provider in PROVIDERS.values()
+        ]
+    }
+
+
+@router.get("/oauth/{provider}")
+async def start_oauth(provider: str) -> RedirectResponse:
+    """
+    Start the OAuth flow: redirect the browser to the provider.
+
+    The state nonce is kept in a short lived signed cookie and compared on the
+    way back, which is what stops a third party from feeding us their own
+    authorization code.
+    """
+    try:
+        oauth_provider = get_provider(provider)
+    except OAuthError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if not is_configured(oauth_provider):
+        raise HTTPException(
+            status_code=503,
+            detail=f"{oauth_provider.name} sign-in is not configured on this deployment",
+        )
+
+    nonce = secrets.token_urlsafe(24)
+    state = f"{oauth_provider.id}:{nonce}"
+    redirect_uri = _redirect_uri(oauth_provider.id)
+    url, code_verifier = build_authorize_url(oauth_provider, redirect_uri, state)
+
+    response = RedirectResponse(url, status_code=307)
+    response.set_cookie(
+        key=STATE_COOKIE,
+        value=sign_state(f"{nonce}:{code_verifier or ''}"),
+        max_age=STATE_TTL_SEC,
+        httponly=True,
+        secure=settings.AUTH_COOKIE_SECURE,
+        samesite=settings.AUTH_COOKIE_SAMESITE,
+        path="/",
+    )
+    return response
+
+
+@router.get("/oauth/{provider}/callback")
+async def oauth_callback(provider: str, request: Request) -> RedirectResponse:
+    """
+    Handle the provider callback: validate the state, exchange the code, link
+    the account and start the session.
+    """
+    try:
+        oauth_provider = get_provider(provider)
+    except OAuthError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    error = request.query_params.get("error")
+    if error:
+        return RedirectResponse(_frontend_url(f"/auth?error={error}"), status_code=307)
+
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+    if not code or not state:
+        return RedirectResponse(_frontend_url("/auth?error=missing_code"), status_code=307)
+
+    # The state cookie holds the nonce and the PKCE verifier, signed.
+    stored = read_state(request.cookies.get(STATE_COOKIE))
+    if not stored:
+        return RedirectResponse(_frontend_url("/auth?error=invalid_state"), status_code=307)
+
+    stored_nonce, _, stored_verifier = stored.partition(":")
+    prefix = f"{oauth_provider.id}:"
+    if not state.startswith(prefix):
+        return RedirectResponse(_frontend_url("/auth?error=invalid_state"), status_code=307)
+    if not secrets.compare_digest(state[len(prefix) :], stored_nonce):
+        return RedirectResponse(_frontend_url("/auth?error=invalid_state"), status_code=307)
+
+    try:
+        token_payload = await exchange_code(
+            oauth_provider,
+            code,
+            _redirect_uri(oauth_provider.id),
+            code_verifier=stored_verifier or None,
+        )
+        profile = await fetch_profile(oauth_provider, token_payload["access_token"])
+    except OAuthError as exc:
+        logger.warning("OAuth callback failed: %s", exc)
+        return RedirectResponse(_frontend_url("/auth?error=oauth_failed"), status_code=307)
+
+    account = await repos.upsert_account(
+        provider=profile["provider"],
+        provider_id=profile["provider_id"],
+        email=profile["email"],
+        name=profile["name"],
+        avatar_url=profile["avatar_url"],
+        email_verified=profile["email_verified"],
+    )
+
+    session_token = issue_session(account["id"], account.get("email") or "")
+
+    response = RedirectResponse(_frontend_url("/auth/callback"), status_code=307)
     response.set_cookie(
         key=settings.AUTH_SESSION_COOKIE,
-        value=encode_session(cookie_header),
+        value=session_token,
         max_age=settings.AUTH_SESSION_TTL_SEC,
         httponly=True,
         secure=settings.AUTH_COOKIE_SECURE,
         samesite=settings.AUTH_COOKIE_SAMESITE,
         path="/",
     )
+    response.delete_cookie(key=STATE_COOKIE, path="/")
+    return response
 
 
-def _clear_session_cookie(response: Response) -> None:
+@router.get("/me", response_model=AuthResponse)
+async def me(request: Request) -> AuthResponse:
+    """Resolve the current session."""
+    session = read_session(request.cookies.get(settings.AUTH_SESSION_COOKIE))
+    if not session:
+        return AuthResponse(authenticated=False, user=SessionUser())
+    return AuthResponse(authenticated=True, user=_session_user(session))
+
+
+@router.post("/logout", response_model=AuthResponse)
+async def logout(response: Response) -> AuthResponse:
+    """Clear the session cookie."""
     response.delete_cookie(
         key=settings.AUTH_SESSION_COOKIE,
         path="/",
         secure=settings.AUTH_COOKIE_SECURE,
         samesite=settings.AUTH_COOKIE_SAMESITE,
     )
-
-
-async def _authenticate(
-    response: Response, email: str, password: str, allow_signup: bool
-) -> AuthResponse:
-    auth = get_pyro_auth()
-    try:
-        if allow_signup:
-            try:
-                payload, cookie_header = await auth.signup(email, password)
-            except PyroAuthError as exc:
-                if exc.status_code != 409:
-                    raise
-                # The account exists. Fall back to signing in with the same
-                # password, and say clearly what went wrong if that fails.
-                try:
-                    payload, cookie_header = await auth.login(email, password)
-                except PyroAuthError as login_exc:
-                    if login_exc.status_code == 401:
-                        raise HTTPException(
-                            status_code=409,
-                            detail=(
-                                "This address already has an account. Sign in with its "
-                                "passcode, or use 'Forgot passcode' to set a new one."
-                            ),
-                        ) from login_exc
-                    raise
-        else:
-            payload, cookie_header = await auth.login(email, password)
-    except PyroAuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-    if not cookie_header:
-        raise HTTPException(status_code=500, detail="Pyronites returned no session")
-
-    _set_session_cookie(response, cookie_header)
-    return AuthResponse(authenticated=True, user=_public_user(payload))
-
-
-@router.post("/signup", response_model=AuthResponse)
-async def signup(credentials: Credentials, response: Response) -> AuthResponse:
-    """Create an account, or sign in when the account already exists."""
-    return await _authenticate(
-        response, credentials.email, credentials.password, allow_signup=True
-    )
-
-
-@router.post("/login", response_model=AuthResponse)
-async def login(credentials: Credentials, response: Response) -> AuthResponse:
-    """Sign in with email and password."""
-    return await _authenticate(
-        response, credentials.email, credentials.password, allow_signup=False
-    )
-
-
-@router.post("/logout", response_model=AuthResponse)
-async def logout(request: Request, response: Response) -> AuthResponse:
-    """Invalidate the session on Pyronites and clear the browser cookie."""
-    token = request.cookies.get(settings.AUTH_SESSION_COOKIE)
-    cookie_header = decode_session(token)
-    if cookie_header:
-        await get_pyro_auth().logout(cookie_header)
-    _clear_session_cookie(response)
     return AuthResponse(authenticated=False, user=SessionUser())
-
-
-@router.get("/me", response_model=AuthResponse)
-async def me(request: Request) -> AuthResponse:
-    """Resolve the signed-in user, or report an anonymous session."""
-    token = request.cookies.get(settings.AUTH_SESSION_COOKIE)
-    cookie_header = decode_session(token)
-    if not cookie_header:
-        return AuthResponse(authenticated=False, user=SessionUser())
-    payload = await get_pyro_auth().me(cookie_header)
-    if not payload:
-        return AuthResponse(authenticated=False, user=SessionUser())
-    return AuthResponse(authenticated=True, user=_public_user(payload))
-
-
-@router.post("/password/forgot", response_model=AuthResponse)
-async def forgot_password(payload: ForgotPassword) -> AuthResponse:
-    """Ask Pyronites to email a reset link. Always reports success."""
-    try:
-        await get_pyro_auth().forgot_password(payload.email)
-    except PyroAuthError:
-        pass
-    return AuthResponse(
-        authenticated=False,
-        user=SessionUser(),
-        message="If that address has an account, a reset link is on its way.",
-    )
